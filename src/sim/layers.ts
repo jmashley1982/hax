@@ -181,11 +181,10 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
   physical: {
     id: 'physical',
     title: 'PHYSICAL',
-    // Final layer -- no further breakthrough via this mechanism yet.
-    // Phase 7's finale cinematic is the eventual payoff for reaching here;
-    // until then it plateaus at full intensity, which is an acceptable
-    // "you made it" state on its own.
-    threshold: Infinity,
+    // Final layer -- crossing this threshold triggers the finale sequence
+    // (shell.handleFinale) instead of a normal breakthrough to a next
+    // layer, since there isn't one.
+    threshold: 260,
     burstSources: [
       ['physical', 'scada'],
       ['physical', 'camera'],
@@ -231,17 +230,25 @@ export class LayerSystem {
 
   /** Proximity to breakthrough, 0..~1.3 (clamped past 1 so a lagging tick doesn't overshoot wildly). */
   get tension(): number {
-    if (!Number.isFinite(this.current.threshold)) return 0.5 // physical: steady mid-intensity plateau
     return Math.min(1.3, this.progressInLayer / this.current.threshold)
   }
 
+  /** True at the deepest layer -- crossing threshold here means the finale, not a next-layer breakthrough. */
   get isFinalLayer(): boolean {
     return this.state.layer === 'physical'
   }
 
-  /** Returns true if this addition crossed the breakthrough threshold. */
+  /**
+   * Returns true if this addition crossed the breakthrough threshold.
+   *
+   * This used to hard-return false at the final layer, which meant
+   * progress silently stopped accumulating the moment you reached
+   * PHYSICAL -- the literal mechanism behind "reaching red just means
+   * there's no further success." Now physical accumulates like any other
+   * layer; the shell checks isFinalLayer to route a crossed threshold to
+   * the finale sequence instead of a normal descent.
+   */
   addProgress(amount: number): boolean {
-    if (this.isFinalLayer) return false
     this.progressInLayer += amount
     return this.progressInLayer >= this.current.threshold
   }
@@ -261,6 +268,13 @@ export class LayerSystem {
       }
     }
     return false
+  }
+
+  /** Back to surface for a new contract after the finale -- same instance, so Director's reference stays valid. */
+  restart(): void {
+    this.state.layer = 'surface'
+    this.progressInLayer = 0
+    this.firedFractions.clear()
   }
 
   /** Advance to the next layer, resetting progress and the demand-fraction tracker. */

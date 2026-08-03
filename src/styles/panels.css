@@ -151,6 +151,68 @@
   margin-bottom: 0.5rem;
 }
 
+/* ---- THREAT (counter-hack alarm) ---- */
+
+.win.threat {
+  border-color: var(--danger);
+  min-width: 300px;
+  animation: threat-alarm 900ms ease-in-out infinite;
+  z-index: 850 !important;
+}
+
+@keyframes threat-alarm {
+  0%, 100% { box-shadow: 0 0 22px rgba(255, 59, 59, 0.35), inset 0 0 40px rgba(0, 0, 0, 0.35); }
+  50% { box-shadow: 0 0 34px rgba(255, 59, 59, 0.75), inset 0 0 40px rgba(0, 0, 0, 0.35); }
+}
+
+.win.threat .win__title {
+  background: rgba(255, 59, 59, 0.18);
+  color: var(--danger);
+}
+
+.win.threat.is-cracked {
+  animation: none;
+  border-color: var(--ok);
+}
+
+.win.threat.threat--failed {
+  animation: threat-fail 700ms ease-out forwards;
+}
+
+@keyframes threat-fail {
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(1.03); }
+  100% { transform: scale(0.97); opacity: 0; }
+}
+
+.threat__field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0.5rem 0;
+}
+
+.threat__node {
+  border: 1px solid var(--danger);
+  background: rgba(255, 59, 59, 0.08);
+  color: var(--danger);
+  font-size: 16px;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+}
+
+.threat__node:hover {
+  background: rgba(255, 59, 59, 0.25);
+}
+
+.threat__node.is-cleared {
+  background: rgba(57, 255, 106, 0.18);
+  border-color: var(--ok);
+  color: var(--ok);
+  cursor: default;
+}
+
 /* ---- SEALED overlay (perimeter layer modifier) ---- */
 
 .panel__seal {

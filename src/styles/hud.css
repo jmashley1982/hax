@@ -128,3 +128,50 @@
     opacity: 0.5;
   }
 }
+
+/* ---- ENDING BANNER (finale verdict) ---- */
+
+.ending-banner {
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+  animation: ending-banner-in 400ms ease-out;
+}
+
+@keyframes ending-banner-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.ending-banner__title {
+  font-size: 34px;
+  letter-spacing: 0.16em;
+  color: var(--fg-bright);
+  text-shadow: 0 0 18px var(--glow);
+}
+
+.ending-banner__sub {
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: var(--accent-2);
+  text-transform: uppercase;
+}
+
+.ending-banner__score {
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: var(--fg-dim);
+}
