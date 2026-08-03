@@ -39,3 +39,10 @@
   background: linear-gradient(to top, var(--bg-deep) 40%, transparent);
   pointer-events: none;
 }
+
+.statusbar__favicon {
+  width: 12px;
+  height: 12px;
+  margin-right: 0.4rem;
+  vertical-align: -1px;
+}

@@ -13,8 +13,11 @@ import { LayerSystem } from '@/sim/layers'
 import { Director } from '@/sim/director'
 import { CounterHackDirector, type ThreatEvent } from '@/sim/counterHack'
 import { generateTarget } from '@/sim/target'
+import { reconTierZero, reconLive, type ReconResult } from '@/sim/recon'
 import { ContentEngine } from '@/content'
 import type { MissionFacts } from '@/content/grammar'
+import type { LayerId } from '@/core/state'
+import type { LayerPalette } from '@/sim/layers'
 import { CrtOverlay } from '@/fx/crt'
 import { Terminal } from './terminal'
 import { Prompt } from './prompt'
@@ -22,11 +25,12 @@ import { Hud } from './hud/hud'
 import { ObjectiveBar } from './hud/objective'
 import { WindowManager } from './windows/manager'
 import { spawnWarningDialog } from './windows/dialogs'
+import { StartOverlay } from './startOverlay'
 import { BruteForcePanel } from './panels/bruteForce'
 import { TraceDefensePanel } from './panels/traceDefense'
 import { PANEL_LABELS } from './panels/registry'
 import { ThreatPanel } from './panels/threatPanel'
-import { applyLayerPalette } from '@/themes/themes'
+import { applyLayerPalette, brandLayerPalettes } from '@/themes/themes'
 import type { TaskPanel } from './panels/panel'
 
 const MODE_CYCLE: readonly InteractionMode[] = ['hybrid', 'chaos', 'intent']
@@ -64,6 +68,15 @@ export class Shell {
   private activeThreats: ThreatPanel[] = []
   private inFinale = false
   private contractCount = 0
+
+  /**
+   * Set only when the player pointed a run at a real URL (startOverlay).
+   * Non-null means every breakthrough/restart repaints with the site's
+   * brand color instead of the built-in fictional per-layer palette --
+   * see handleBreakthrough/startNewContract below.
+   */
+  private activePalettes: Record<LayerId, LayerPalette> | null = null
+  private recon: ReconResult | null = null
 
   constructor(root: HTMLElement, private state: GameState) {
     this.shellEl = document.createElement('div')
@@ -123,6 +136,54 @@ export class Shell {
     this.director.spawn()
     this.director.spawn()
     this.refreshTarget()
+
+    // The URL prompt appears OVER the already-running board, never gating
+    // it -- see ui/startOverlay.ts's header comment for why that matters.
+    new StartOverlay(this.shellEl, {
+      onSubmit: (url) => this.beginRealTarget(url),
+      onSkip: () => {
+        /* keep the fictional target already generated in the constructor */
+      },
+    })
+  }
+
+  /**
+   * Point the current run at a real site. Applies instantly from tier-0
+   * (URL text only -- org/domain/subnet, a hashed pseudo-brand color) so
+   * there is no wait, then quietly re-applies again if tier-1 (real page
+   * data, sim/recon.ts's relay chain) resolves with something better. If
+   * every relay fails -- offline, blocked, whatever -- that second call
+   * simply never happens and the tier-0 result stands; nothing here needs
+   * to know or care which one it got.
+   */
+  private beginRealTarget(url: string): void {
+    const tierZero = reconTierZero(url)
+    this.applyRecon(tierZero)
+    reconLive(url, tierZero)
+      .then((live) => {
+        if (live.live) this.applyRecon(live)
+      })
+      .catch(() => {
+        /* reconLive never rejects, but belt-and-braces: never surface a network error to the player */
+      })
+  }
+
+  private applyRecon(recon: ReconResult): void {
+    this.recon = recon
+    this.target = recon.facts
+    this.content.setFacts(recon.facts)
+    this.renderStatusLeft()
+
+    this.activePalettes = brandLayerPalettes(recon.brandColor)
+    applyLayerPalette(this.activePalettes[this.layers.current.id] ?? this.layers.current.palette)
+
+    store.emit('terminal:line', {
+      text: recon.live
+        ? `>> TARGET ACQUIRED :: ${recon.facts.org} (${recon.facts.domain}) -- live recon complete`
+        : `>> TARGET LOCKED :: ${recon.facts.org} (${recon.facts.domain})`,
+      tone: 'success',
+      speed: 2,
+    })
   }
 
   private mountStatusBar(shellEl: HTMLElement): void {
@@ -143,7 +204,20 @@ export class Shell {
 
   /** Keeps the target org visible at all times -- the point of reference for every threat/breach line. */
   private renderStatusLeft(): void {
-    this.statusLeft.textContent = `TARGET ${this.target.org.toUpperCase()} (${this.target.domain})`
+    this.statusLeft.innerHTML = ''
+    if (this.recon) {
+      const icon = document.createElement('img')
+      icon.className = 'statusbar__favicon'
+      icon.src = this.recon.faviconUrl
+      icon.alt = ''
+      // A broken/blocked favicon fetch must never show a broken-image icon
+      // in the middle of the status bar -- just fall back to text-only.
+      icon.addEventListener('error', () => icon.remove())
+      this.statusLeft.appendChild(icon)
+    }
+    const text = document.createElement('span')
+    text.textContent = `TARGET ${this.target.org.toUpperCase()} (${this.target.domain})`
+    this.statusLeft.appendChild(text)
   }
 
   private runBootSequence(): void {
@@ -437,7 +511,9 @@ export class Shell {
 
     // Repaint the whole UI for the new depth -- this is what makes each
     // layer read as a different place rather than the same green screen.
-    applyLayerPalette(next.palette)
+    // A locked-in real target keeps its brand-derived palette throughout
+    // the descent instead of reverting to the generic fictional one.
+    applyLayerPalette(this.activePalettes?.[next.id] ?? next.palette)
 
     // Announce what's newly available. An unlock nobody is told about may
     // as well not exist.
@@ -553,6 +629,11 @@ export class Shell {
     // identically -- reusing state.seed here would restart the exact same
     // content stream.
     this.content = new ContentEngine(this.state.seed + this.contractCount * 10_000, this.target)
+    // A finished real-site run rolls into a fresh fictional one -- clear
+    // the brand palette/recon data so the new contract repaints with the
+    // generic per-layer colors instead of carrying the old site's brand.
+    this.activePalettes = null
+    this.recon = null
     this.renderStatusLeft()
 
     this.layers.restart()

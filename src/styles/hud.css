@@ -175,3 +175,63 @@
   letter-spacing: 0.1em;
   color: var(--fg-dim);
 }
+
+/* ---- START OVERLAY (real-target URL entry) ---- */
+
+.start-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  animation: ending-banner-in 300ms ease-out;
+}
+
+.start-overlay.is-closing {
+  animation: start-overlay-out 200ms ease-in forwards;
+}
+
+@keyframes start-overlay-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.start-overlay__box {
+  width: 360px;
+  max-width: 88vw;
+  background: var(--panel);
+  border: 1px solid var(--fg);
+  box-shadow: 0 0 30px var(--glow), inset 0 0 40px rgba(0, 0, 0, 0.4);
+  padding: 1.1rem 1.2rem;
+}
+
+.start-overlay__title {
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  color: var(--fg-bright);
+  text-shadow: 0 0 8px var(--glow);
+  margin-bottom: 0.4rem;
+}
+
+.start-overlay__sub {
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin-bottom: 0.7rem;
+}
+
+.start-overlay__input {
+  margin-bottom: 0.6rem;
+}
+
+.start-overlay__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.win__btn--ghost {
+  color: var(--fg-dim);
+}

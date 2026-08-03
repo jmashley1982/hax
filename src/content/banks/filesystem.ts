@@ -20,6 +20,7 @@ export const filesystem: Bank = {
     { t: '{path}:{int:1-400}: {sql}', w: 2 },
     { t: '{path}:{int:1-400}: {config}', w: 2 },
     { t: 'match in {path} -- {int:1-40} occurrences', w: 1 },
+    { t: 'crawled {realpath} -- {int:1-40} matches', w: 2 },
   ],
   path: [
     { t: '/var/{dirname}/{filename}', w: 2 },

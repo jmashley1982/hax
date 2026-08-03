@@ -1,4 +1,4 @@
-import { float, int, pad, weightedPick, type Rng } from '@/core/rng'
+import { float, int, pad, pick, weightedPick, type Rng } from '@/core/rng'
 import * as netGen from './generators/net'
 import * as hexGen from './generators/hex'
 import * as identGen from './generators/ident'
@@ -41,7 +41,23 @@ export interface MissionFacts {
   org: string
   domain: string
   subnet: string
+  /**
+   * Real-site enrichment (sim/recon.ts) -- present only when the player
+   * pointed the run at an actual URL and recon found live data. Absent for
+   * fully-fictional targets, so every existing bank/template keeps working
+   * unchanged. {realpath}/{realhost}/{field}/{tech} below read from these
+   * when populated and fall back to the generic generators otherwise --
+   * this is what makes real URL paths and form field names show up in
+   * generated command lines without touching every bank file.
+   */
+  paths?: readonly string[]
+  hosts?: readonly string[]
+  fields?: readonly string[]
+  tech?: readonly string[]
 }
+
+const FIELD_FALLBACK = ['username', 'password', 'email', 'session_token', 'api_key', 'auth_cookie'] as const
+const TECH_FALLBACK = ['nginx', 'cloudflare', 'aws-elb', 'react', 'postgres', 'redis'] as const
 
 interface RecentTracker {
   buf: number[]
@@ -170,6 +186,20 @@ function resolveSlot(
       return timestamp(rng)
     case 'org':
       return ctx.facts?.org ?? identGen.orgName(rng)
+    case 'domain':
+      return ctx.facts?.domain ?? netGen.hostname(rng)
+    // Real-site slots (populated by sim/recon.ts). Each falls back to the
+    // matching generic generator/bank when no real data was recovered --
+    // so every template using these still works for fully-fictional
+    // targets, offline runs, and if the recon relay chain fails.
+    case 'realpath':
+      return ctx.facts?.paths?.length ? pick(rng, ctx.facts.paths) : resolveSlot('path', undefined, ctx, depth, pins)
+    case 'realhost':
+      return ctx.facts?.hosts?.length ? pick(rng, ctx.facts.hosts) : resolveSlot('host', undefined, ctx, depth, pins)
+    case 'field':
+      return ctx.facts?.fields?.length ? pick(rng, ctx.facts.fields) : pick(rng, FIELD_FALLBACK)
+    case 'tech':
+      return ctx.facts?.tech?.length ? pick(rng, ctx.facts.tech) : pick(rng, TECH_FALLBACK)
     case 'person':
       return formatPerson(identGen.person(rng))
     case 'username':

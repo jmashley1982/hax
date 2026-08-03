@@ -34,6 +34,12 @@ export const shell: Bank = {
     { t: 'route add -net {ip}/24 gw {ip2}', w: 1 },
     { t: 'chattr -ia /etc/shadow && vipw', w: 1 },
     { t: 'xxd -s 0x{hex:4} -l 256 core.{int:100-9999}', w: 1 },
+    // {realpath}/{realhost}/{field} resolve to actual URL paths/hostnames/
+    // form field names when the run targets a real site (sim/recon.ts),
+    // and quietly fall back to the generic generators otherwise.
+    { t: 'curl -sk https://{realhost}{realpath}', w: 2 },
+    { t: 'sqlmap -u "https://{domain}{realpath}" --forms --batch', w: 2 },
+    { t: 'hydra -l admin -P rockyou.txt -e ns {realhost} https-post-form "{realpath}:{field}=^USER^"', w: 1 },
   ],
   exename: ['agentd', 'watchdog', 'syncd', 'updater', 'relayd', 'authsvc'],
 }

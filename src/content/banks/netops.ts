@@ -9,6 +9,7 @@ export const netops: Bank = {
     { t: '{ts}  !! filtered at hop {int:3-19} ({ip}) -- rerouting via {relay}', w: 1 },
     { t: '{ts}  arp: {mac} claims {ip}', w: 2 },
     { t: '{ts}  route to {host} via {relay}, {int:2-14} hops', w: 1 },
+    { t: '{ts}  {realhost} :: {tech} fingerprint matched', w: 2 },
   ],
   scanMode: ['stealth', 'aggressive', 'passive', 'fragmented', 'decoyed'],
   banner: [
