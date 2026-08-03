@@ -38,3 +38,56 @@
     display: none;
   }
 }
+
+/* Breakthrough moment: a quick bright flash + shake when a layer is
+   cleared. This is the visual payoff for the tension→breakthrough rhythm
+   (plan §13a) -- deliberately brief and punchy, not a long cutscene. */
+.shell.is-breaching {
+  animation: breach-shake 380ms ease-in-out;
+}
+
+.shell.is-breaching::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: var(--fg);
+  opacity: 0;
+  pointer-events: none;
+  animation: breach-flash 380ms ease-out;
+}
+
+@keyframes breach-flash {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes breach-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-6px, 3px);
+  }
+  40% {
+    transform: translate(5px, -4px);
+  }
+  60% {
+    transform: translate(-4px, -2px);
+  }
+  80% {
+    transform: translate(3px, 4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-breaching,
+  .shell.is-breaching::after {
+    animation: none;
+  }
+}

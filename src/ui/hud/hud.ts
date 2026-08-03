@@ -2,18 +2,24 @@ import { store } from '@/core/store'
 import type { GameState } from '@/core/state'
 
 /**
- * Top-right HUD: layer, heat meter, score. Objectives panel lands in
- * Phase 5 once missions exist to populate it -- this file's shape doesn't
- * change when that happens, it just gains a row.
+ * Top-right HUD: score, layer, breach progress, heat. The breach bar is
+ * the direct answer to "what am I supposed to be judging" from the first
+ * playtest (plan §13a) -- it's the one number that visibly climbs from
+ * what you do and pays off in a breakthrough.
  */
 export class Hud {
   private el: HTMLElement
   private layerValue: HTMLElement
+  private breachFill: HTMLElement
   private heatFill: HTMLElement
   private heatValue: HTMLElement
   private scoreValue: HTMLElement
 
-  constructor(mountPoint: HTMLElement, private state: GameState) {
+  constructor(
+    mountPoint: HTMLElement,
+    private state: GameState,
+    private getTension: () => number,
+  ) {
     this.el = document.createElement('div')
     this.el.className = 'hud'
 
@@ -31,6 +37,18 @@ export class Hud {
     this.layerValue.className = 'hud__value'
     layerRow.append(layerLabel, this.layerValue)
 
+    const breachRow = document.createElement('div')
+    breachRow.className = 'hud__row'
+    const breachLabel = document.createElement('span')
+    breachLabel.className = 'hud__label'
+    breachLabel.textContent = 'BREACH'
+    const breachBar = document.createElement('div')
+    breachBar.className = 'hud__heatbar hud__heatbar--breach'
+    this.breachFill = document.createElement('div')
+    this.breachFill.className = 'hud__heatbar-fill hud__heatbar-fill--breach'
+    breachBar.appendChild(this.breachFill)
+    breachRow.append(breachLabel, breachBar)
+
     const heatRow = document.createElement('div')
     heatRow.className = 'hud__row'
     const heatLabel = document.createElement('span')
@@ -45,7 +63,7 @@ export class Hud {
     this.heatValue.className = 'hud__value'
     heatRow.append(heatLabel, heatBar, this.heatValue)
 
-    this.el.append(scoreRow, layerRow, heatRow)
+    this.el.append(scoreRow, layerRow, breachRow, heatRow)
     mountPoint.appendChild(this.el)
 
     this.render()
@@ -55,6 +73,10 @@ export class Hud {
   private render(): void {
     this.scoreValue.textContent = String(Math.floor(this.state.score)).padStart(5, '0')
     this.layerValue.textContent = this.state.layer.toUpperCase()
+
+    const breachPct = Math.min(100, Math.round(this.getTension() * 100))
+    this.breachFill.style.width = `${breachPct}%`
+
     const heat = Math.round(this.state.heat)
     this.heatValue.textContent = `${heat}%`
     this.heatFill.style.width = `${heat}%`

@@ -15,16 +15,17 @@ export interface ModeProfile {
   clickGain: number
   /** Progress per submitted command line (before command-router bonuses). */
   submitGain: number
-  /** [min,max] ms between ambient filler beats when the scheduler queue runs dry. */
+  /** [min,max] ms between ambient filler beats at zero tension -- scaled down as breach tension climbs (see sim/layers.ts). */
   beatIntervalMs: readonly [number, number]
   /**
-   * [min,max] ms between blocking "demand" popups (auth prompts, choice
-   * dialogs) -- null means this mode never spawns one on a timer. CHAOS
-   * stays timer-demand-free on purpose: mashing should never get
-   * interrupted by something that requires a considered decision, that's
-   * what HYBRID and INTENT are for (plan's "default is a mix of both").
+   * Whether this mode ever shows "demand" popups (auth prompts, choice
+   * dialogs) at all. When true, they fire as breach tension crosses fixed
+   * fractions (0.3/0.6/0.9) toward the next layer -- tied to what the
+   * player did, not a wall clock (see plan §13a). CHAOS stays demand-free
+   * on purpose: mashing should never get interrupted by something that
+   * wants a considered decision, that's what HYBRID and INTENT are for.
    */
-  demandIntervalMs: readonly [number, number] | null
+  demandsEnabled: boolean
   /** Cosmetic hook for fx/audio intensity in later phases. */
   noiseVolume: number
 }
@@ -36,7 +37,7 @@ export const MODE_PROFILES: Record<InteractionMode, ModeProfile> = {
     clickGain: 4,
     submitGain: 3,
     beatIntervalMs: [350, 900],
-    demandIntervalMs: null,
+    demandsEnabled: false,
     noiseVolume: 1,
   },
   intent: {
@@ -48,7 +49,7 @@ export const MODE_PROFILES: Record<InteractionMode, ModeProfile> = {
     clickGain: 0,
     submitGain: 8,
     beatIntervalMs: [900, 2200],
-    demandIntervalMs: [20000, 32000],
+    demandsEnabled: true,
     noiseVolume: 0.3,
   },
   hybrid: {
@@ -57,7 +58,7 @@ export const MODE_PROFILES: Record<InteractionMode, ModeProfile> = {
     clickGain: 1.6,
     submitGain: 6,
     beatIntervalMs: [600, 1500],
-    demandIntervalMs: [12000, 22000],
+    demandsEnabled: true,
     noiseVolume: 0.6,
   },
 }

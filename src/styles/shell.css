@@ -3,56 +3,6 @@
   inset: 0;
 }
 
-.boot-gate {
-  position: absolute;
-  inset: 0;
-  z-index: 900;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 1.5rem;
-  background: var(--bg-deep);
-  cursor: pointer;
-  user-select: none;
-}
-
-.boot-gate__title {
-  font-size: clamp(28px, 6vw, 56px);
-  letter-spacing: 0.35em;
-  color: var(--fg);
-  text-shadow: 0 0 calc(var(--glow-strength) * 18px) var(--glow);
-}
-
-.boot-gate__hint {
-  font-size: 14px;
-  letter-spacing: 0.2em;
-  color: var(--fg-dim);
-  animation: boot-gate-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes boot-gate-pulse {
-  0%,
-  100% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.boot-gate.is-leaving {
-  animation: boot-gate-out 320ms ease-in forwards;
-  pointer-events: none;
-}
-
-@keyframes boot-gate-out {
-  to {
-    opacity: 0;
-    transform: scale(1.02);
-  }
-}
-
 .prompt {
   position: absolute;
   bottom: 2rem;

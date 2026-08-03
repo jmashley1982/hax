@@ -51,6 +51,10 @@
   transition: width 200ms linear, background-color 400ms ease;
 }
 
+.hud__heatbar-fill--breach {
+  background: var(--accent-2);
+}
+
 .hud__heatbar-fill.is-warn {
   background: var(--warn);
 }
