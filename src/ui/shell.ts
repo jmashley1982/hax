@@ -12,6 +12,7 @@ import { awardScore } from '@/sim/score'
 import { LayerSystem } from '@/sim/layers'
 import { Director } from '@/sim/director'
 import { CounterHackDirector, type ThreatEvent } from '@/sim/counterHack'
+import { ProcessSpawnDirector } from '@/sim/processDirector'
 import { generateTarget } from '@/sim/target'
 import { reconTierZero, reconLive, type ReconResult } from '@/sim/recon'
 import { ContentEngine } from '@/content'
@@ -25,6 +26,7 @@ import { Hud } from './hud/hud'
 import { ObjectiveBar } from './hud/objective'
 import { WindowManager } from './windows/manager'
 import { spawnWarningDialog } from './windows/dialogs'
+import { spawnProcessWindow } from './windows/processWindow'
 import { StartOverlay } from './startOverlay'
 import { BruteForcePanel } from './panels/bruteForce'
 import { TraceDefensePanel } from './panels/traceDefense'
@@ -66,6 +68,7 @@ export class Shell {
   /** The org being broken into. Threaded through content, threats, and the finale so it reads as one specific target, not a sci-fi abstraction. */
   private target: MissionFacts
   private counterHack: CounterHackDirector
+  private processSpawner: ProcessSpawnDirector
   private activeThreats: ThreatPanel[] = []
   private inFinale = false
   private contractCount = 0
@@ -89,6 +92,7 @@ export class Shell {
     this.target = generateTarget(mulberry32(state.seed + 3))
     this.content = new ContentEngine(state.seed, this.target)
     this.counterHack = new CounterHackDirector(mulberry32(state.seed + 4))
+    this.processSpawner = new ProcessSpawnDirector(mulberry32(state.seed + 6))
 
     this.heat = new HeatSystem(state)
     this.layers = new LayerSystem(state)
@@ -448,6 +452,15 @@ export class Shell {
     if (!this.inFinale) {
       const threat = this.counterHack.tick(this.elapsedMs, this.state.heat, this.state.layer, this.activeThreats.length)
       if (threat) this.spawnThreat(threat)
+
+      // "Random windows that pop open, show some code running, then
+      // close -- like we're triggering events behind the scenes." Purely
+      // decorative -- never registered with the Director or added to any
+      // input-routing list, so it can never steal a keystroke from an
+      // actual task panel.
+      if (this.processSpawner.tick(this.elapsedMs, this.state.layer, this.layers.tension)) {
+        spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
+      }
     }
   }
 
