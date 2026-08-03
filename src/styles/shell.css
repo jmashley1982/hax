@@ -53,6 +53,27 @@
   }
 }
 
+.prompt {
+  position: absolute;
+  bottom: 2rem;
+  left: 3rem;
+  right: 3rem;
+  z-index: 300;
+  font-size: clamp(13px, 1.3vw, 17px);
+  color: var(--fg-bright);
+  text-shadow: 0 0 calc(var(--glow-strength) * 6px) var(--glow);
+  white-space: pre-wrap;
+  word-break: break-all;
+  pointer-events: none;
+}
+
+.prompt::after {
+  content: '\2588';
+  display: inline-block;
+  margin-left: 2px;
+  animation: term-cursor-blink var(--cursor-blink-ms) steps(1) infinite;
+}
+
 .statusbar {
   position: absolute;
   bottom: 0;

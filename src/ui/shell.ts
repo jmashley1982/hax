@@ -1,24 +1,48 @@
 import { store } from '@/core/store'
 import { clock } from '@/core/clock'
-import type { GameState } from '@/core/state'
+import { mulberry32 } from '@/core/rng'
+import { saveState, type GameState } from '@/core/state'
+import type { InteractionMode } from '@/core/events'
+import { InputPipeline } from '@/core/input'
+import { MODE_PROFILES, computeProgress } from '@/core/progress'
+import { Scheduler } from '@/core/scheduler'
+import { matchCommand } from '@/sim/commands/registry'
+import { buildCommandResponse } from '@/sim/commands/responses'
 import { ContentEngine } from '@/content'
 import { CrtOverlay } from '@/fx/crt'
 import { Terminal } from './terminal'
+import { Prompt } from './prompt'
+
+const MODE_CYCLE: readonly InteractionMode[] = ['hybrid', 'chaos', 'intent']
 
 /**
- * Root shell for Phase 1: boot gate -> CRT terminal that reacts to any
- * keypress or click with generated output.
- *
- * The input handling here is intentionally simple (every raw input maps
- * to a line, occasionally a burst). Phase 3 replaces this with the real
- * input pipeline (core/input.ts + core/progress.ts) driven by mode
- * profiles (CHAOS/INTENT/HYBRID) and a beat scheduler — this is the seam
- * that gets generalized, not thrown away.
+ * Root shell. Boot gate -> CRT terminal + prompt, driven by the Phase 3
+ * pipeline: raw input -> InputPipeline (rate limiting + variety) ->
+ * ModeProfile coefficients -> Scheduler (paces ambient output, and will
+ * host mission beats from Phase 5 onward). Submitted commands go through
+ * the keyword router instead of the ambient path, since a typed command is
+ * a deliberate act that deserves an immediate, specific response.
  */
 export class Shell {
   private content: ContentEngine
-  private inputCount = 0
+  private inputPipeline = new InputPipeline()
+  private scheduler: Scheduler
   private booted = false
+  private elapsedMs = 0
+  private ambientTick = 0
+  private statusRight!: HTMLElement
+
+  // Rotating pool of ambient burst sources so sustained CHAOS/HYBRID input
+  // escalates through different flavors of chatter instead of settling
+  // into one repeated tone.
+  private static readonly BURST_SOURCES: ReadonlyArray<readonly [string, string]> = [
+    ['netops', 'scanLine'],
+    ['kernel', 'dmesg'],
+    ['exploit', 'stage'],
+    ['crypto', 'decrypt'],
+    ['filesystem', 'dirEntry'],
+    ['physical', 'scada'],
+  ]
 
   constructor(root: HTMLElement, private state: GameState) {
     const shellEl = document.createElement('div')
@@ -26,15 +50,30 @@ export class Shell {
     root.appendChild(shellEl)
 
     this.content = new ContentEngine(state.seed)
+    // A separate RNG stream (seed+1, not shared with content generation)
+    // so scheduler pacing jitter never perturbs which content lines get
+    // drawn -- the two systems stay independently deterministic.
+    this.scheduler = new Scheduler(mulberry32(state.seed + 1))
+    this.scheduler.setAmbientSource(() => this.emitAmbientBeat())
+    this.applyModeProfile()
+
     // Terminal and CrtOverlay wire themselves up via the store's event bus
     // and don't need to be referenced again here yet — Phase 5 (layer
     // transitions) will hold onto the Terminal instance to clear the
     // backlog on descent.
     new Terminal(shellEl)
     new CrtOverlay(shellEl, state.seed)
+    new Prompt(
+      shellEl,
+      (char) => this.handleKey(char),
+      (line) => this.handleSubmit(line),
+    )
 
     this.mountStatusBar(shellEl)
     this.mountBootGate(root)
+    this.bindModeHotkey()
+
+    store.on('tick', ({ dt }) => this.onTick(dt))
   }
 
   private mountStatusBar(shellEl: HTMLElement): void {
@@ -42,10 +81,15 @@ export class Shell {
     bar.className = 'statusbar'
     const left = document.createElement('span')
     left.textContent = `SEED ${this.state.seedLabel}`
-    const right = document.createElement('span')
-    right.textContent = `MODE:${this.state.mode.toUpperCase()}  THEME:${this.state.theme.toUpperCase()}`
-    bar.append(left, right)
+    this.statusRight = document.createElement('span')
+    bar.append(left, this.statusRight)
     shellEl.appendChild(bar)
+    this.renderStatusRight()
+  }
+
+  private renderStatusRight(): void {
+    this.statusRight.textContent =
+      `MODE:${this.state.mode.toUpperCase()} [TAB]  THEME:${this.state.theme.toUpperCase()}`
   }
 
   private mountBootGate(root: HTMLElement): void {
@@ -80,7 +124,7 @@ export class Shell {
     }
     store.emit('terminal:line', { text: '', tone: 'dim', speed: 0 })
     store.emit('terminal:line', {
-      text: 'ready. mash keys or click anywhere.',
+      text: 'ready. mash keys, click, or type a command and press enter. [TAB] switches mode.',
       tone: 'success',
       speed: 4,
     })
@@ -89,64 +133,85 @@ export class Shell {
   }
 
   private bindReactiveInput(): void {
-    window.addEventListener('keydown', (e) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      this.reactToInput()
+    window.addEventListener('pointerdown', (e) => {
+      // Ignore clicks on the boot gate / prompt itself; those aren't ambient mashing.
+      if ((e.target as HTMLElement)?.closest('.boot-gate')) return
+      this.addInputProgress({ kind: 'click', token: 'click' })
     })
-    window.addEventListener('pointerdown', () => this.reactToInput())
   }
 
-  // Rotating pool of "burst" sources so sustained mashing escalates through
-  // different flavors of chatter instead of reading as one repeated tick.
-  // Phase 3 replaces this whole reactive-input path with the real
-  // scheduler-driven pipeline; this list of banks carries over into it.
-  private static readonly BURST_SOURCES: ReadonlyArray<readonly [string, string]> = [
-    ['netops', 'scanLine'],
-    ['kernel', 'dmesg'],
-    ['exploit', 'stage'],
-    ['crypto', 'decrypt'],
-    ['filesystem', 'dirEntry'],
-    ['physical', 'scada'],
-  ]
+  private bindModeHotkey(): void {
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return
+      e.preventDefault()
+      this.cycleMode()
+    })
+  }
 
-  private reactToInput(): void {
-    this.inputCount += 1
+  private cycleMode(): void {
+    const idx = MODE_CYCLE.indexOf(this.state.mode)
+    const next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length] ?? 'hybrid'
+    this.state.mode = next
+    this.applyModeProfile()
+    this.renderStatusRight()
+    saveState(this.state)
+    store.emit('mode:change', { mode: next })
+    store.emit('terminal:line', { text: `-- mode: ${next.toUpperCase()} --`, tone: 'system', speed: 2 })
+  }
 
-    // Every ~5th input, fire a short burst from a rotating source bank.
-    if (this.inputCount % 5 === 0) {
-      const source = Shell.BURST_SOURCES[Math.floor(this.inputCount / 5) % Shell.BURST_SOURCES.length]!
+  private applyModeProfile(): void {
+    this.scheduler.setAmbientInterval(MODE_PROFILES[this.state.mode].beatIntervalMs)
+  }
+
+  private handleKey(char: string): void {
+    this.addInputProgress({ kind: 'key', token: char })
+  }
+
+  private handleSubmit(line: string): void {
+    const evaluated = this.inputPipeline.push({ kind: 'submit', token: line })
+    const match = matchCommand(line)
+    const profile = MODE_PROFILES[this.state.mode]
+    this.scheduler.addProgress(computeProgress(evaluated, profile) * match.strength)
+
+    for (const responseLine of buildCommandResponse(match, this.content)) {
+      store.emit('terminal:line', responseLine)
+    }
+  }
+
+  private addInputProgress(event: { kind: 'key' | 'click'; token: string }): void {
+    const evaluated = this.inputPipeline.push(event)
+    const profile = MODE_PROFILES[this.state.mode]
+    this.scheduler.addProgress(computeProgress(evaluated, profile))
+  }
+
+  private onTick(dt: number): void {
+    this.inputPipeline.refill(dt)
+    this.elapsedMs += dt
+    if (this.booted) this.scheduler.tick(this.elapsedMs)
+  }
+
+  private emitAmbientBeat(): void {
+    this.ambientTick += 1
+
+    if (this.ambientTick % 11 === 0) {
+      store.emit('terminal:line', { text: this.content.line('warnings', 'idsAlert'), tone: 'warning', speed: 4 })
+      return
+    }
+    if (this.ambientTick % 17 === 0) {
+      store.emit('terminal:line', { text: this.content.line('dialogue', 'handlerIdle'), tone: 'system', speed: 6 })
+      return
+    }
+    if (this.ambientTick % 5 === 0) {
+      const source =
+        Shell.BURST_SOURCES[Math.floor(this.ambientTick / 5) % Shell.BURST_SOURCES.length]!
       const [bank, key] = source
-      const burstSize = 3 + (this.inputCount % 3)
+      const burstSize = 2 + (this.ambientTick % 3)
       for (let i = 0; i < burstSize; i++) {
         store.emit('terminal:line', { text: this.content.line(bank, key), tone: 'dim', speed: 2 })
       }
       return
     }
 
-    // Occasionally surface a warning or handler aside instead of plain
-    // ambient chatter -- keeps the default (unfocused) mashing experience
-    // from settling into a single tone.
-    if (this.inputCount % 11 === 0) {
-      store.emit('terminal:line', {
-        text: this.content.line('warnings', 'idsAlert'),
-        tone: 'warning',
-        speed: 4,
-      })
-      return
-    }
-    if (this.inputCount % 17 === 0) {
-      store.emit('terminal:line', {
-        text: this.content.line('dialogue', 'handlerIdle'),
-        tone: 'system',
-        speed: 6,
-      })
-      return
-    }
-
-    store.emit('terminal:line', {
-      text: this.content.line('flavor', 'ambientChaos'),
-      tone: 'normal',
-      speed: 5,
-    })
+    store.emit('terminal:line', { text: this.content.line('flavor', 'ambientChaos'), tone: 'normal', speed: 5 })
   }
 }
