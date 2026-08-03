@@ -1,0 +1,21 @@
+{
+  "name": "nullstack",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An elite-hacker simulator for fun and film props. Nothing real is hacked.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "content:audit": "tsx scripts/contentAudit.ts",
+    "seed:check": "tsx scripts/seedCheck.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.0",
+    "tsx": "^4.19.0"
+  }
+}

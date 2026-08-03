@@ -1,0 +1,58 @@
+/* Theme tokens. Every color/glow/spacing value that differs between themes
+   lives here as a CSS custom property so switching themes is a single
+   `data-theme` attribute swap (see themes/themes.ts) with zero JS re-render.
+   Phase 1 ships `phosphor` only; Phase 8 adds amber/neon/agency following
+   the exact same variable set. */
+:root[data-theme='phosphor'] {
+  --bg: #050705;
+  --bg-deep: #020302;
+  --panel: #0a120a;
+  --panel-edge: #1c3a1c;
+  --fg: #39ff6a;
+  --fg-dim: #1e8f3d;
+  --fg-bright: #baffcf;
+  --accent: #39ff6a;
+  --accent-2: #0ff0a0;
+  --ok: #39ff6a;
+  --warn: #ffd23f;
+  --danger: #ff3b3b;
+  --glow: #39ff6a;
+  --glow-strength: 0.8;
+  --scanline-opacity: 0.12;
+  --vignette-strength: 0.55;
+  --font-mono: 'Courier New', ui-monospace, 'Cascadia Code', monospace;
+  --cursor-blink-ms: 900ms;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg-deep);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: none;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--fg);
+  color: var(--bg-deep);
+}
+
+button,
+input {
+  font-family: inherit;
+}
