@@ -51,6 +51,31 @@
   transition: width 200ms linear, background-color 400ms ease;
 }
 
+.hud__ladder {
+  display: flex;
+  gap: 4px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  margin-bottom: 2px;
+}
+
+.hud__ladder-step {
+  color: rgba(255, 255, 255, 0.16);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding-bottom: 1px;
+}
+
+.hud__ladder-step.is-passed {
+  color: var(--fg-dim);
+  border-bottom-color: var(--fg-dim);
+}
+
+.hud__ladder-step.is-current {
+  color: var(--fg-bright);
+  border-bottom-color: var(--fg);
+  text-shadow: 0 0 8px var(--glow);
+}
+
 .objective {
   position: absolute;
   top: 0.9rem;

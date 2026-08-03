@@ -15,6 +15,14 @@
  */
 const BUFFER_IDLE_CLEAR_MS = 1400
 
+/**
+ * Hard cap on buffer length. The idle-clear above only fires once typing
+ * *stops*, so sustained mashing (no gaps) would grow the buffer without
+ * bound and flood the screen with garbage. No real command is anywhere
+ * near this long.
+ */
+const BUFFER_MAX = 64
+
 export class Prompt {
   private el: HTMLElement
   private buffer = ''
@@ -52,8 +60,12 @@ export class Prompt {
       return
     }
     if (e.key.length === 1) {
-      this.buffer += e.key
-      this.render()
+      // Keep driving panels even past the cap -- only the *display* buffer
+      // is bounded, so mashing never stops feeling responsive.
+      if (this.buffer.length < BUFFER_MAX) {
+        this.buffer += e.key
+        this.render()
+      }
       this.onKey(e.key)
       this.scheduleIdleClear()
     }

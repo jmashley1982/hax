@@ -20,6 +20,9 @@ import { ObjectiveBar } from './hud/objective'
 import { WindowManager } from './windows/manager'
 import { spawnWarningDialog } from './windows/dialogs'
 import { BruteForcePanel } from './panels/bruteForce'
+import { TraceDefensePanel } from './panels/traceDefense'
+import { PANEL_LABELS } from './panels/registry'
+import { applyLayerPalette } from '@/themes/themes'
 import type { TaskPanel } from './panels/panel'
 
 const MODE_CYCLE: readonly InteractionMode[] = ['hybrid', 'chaos', 'intent']
@@ -242,6 +245,7 @@ export class Shell {
     this.director.tick(dt)
     for (const panel of this.director.activePanels) {
       if (panel instanceof BruteForcePanel) panel.tickDecay(dt)
+      else if (panel instanceof TraceDefensePanel) panel.tickPings(dt)
     }
     this.refreshTarget()
 
@@ -286,11 +290,23 @@ export class Shell {
 
     const next = this.layers.breakthrough()
     this.breakthroughGraceUntil = this.elapsedMs + BREAKTHROUGH_GRACE_MS
-    this.objective.set(`descending to ${next.title}...`)
+
+    // Repaint the whole UI for the new depth -- this is what makes each
+    // layer read as a different place rather than the same green screen.
+    applyLayerPalette(next.palette)
+
+    // Announce what's newly available. An unlock nobody is told about may
+    // as well not exist.
+    const newTools = next.unlocks.map((id) => PANEL_LABELS[id] ?? id).join(', ')
+    store.emit('terminal:line', {
+      text: `>> ${next.title} -- new tool: ${newTools}`,
+      tone: 'success',
+      speed: 2,
+    })
+    this.objective.set(`descending to ${next.title} -- unlocked ${newTools}`)
 
     setTimeout(() => {
-      this.director.spawn()
-      this.director.spawn()
+      for (let i = 0; i < next.panelFloor; i++) this.director.spawn()
       this.refreshTarget()
     }, 1200)
   }

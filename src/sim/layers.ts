@@ -19,6 +19,23 @@ import { LAYER_ORDER } from '@/core/state'
  * stretches, not one short loop repeated six times (per the user's
  * "not just the same loop every minute or two" note).
  */
+/**
+ * Per-layer palette. Written onto :root as CSS custom properties on
+ * breakthrough (see themes/applyLayerPalette) -- everything in the app
+ * already reads its colors from these variables, so changing depth
+ * repaints the whole UI without restyling anything.
+ */
+export interface LayerPalette {
+  fg: string
+  fgDim: string
+  fgBright: string
+  accent2: string
+  glow: string
+  bgDeep: string
+  panel: string
+  panelEdge: string
+}
+
 export interface LayerDef {
   id: LayerId
   title: string
@@ -29,6 +46,13 @@ export interface LayerDef {
   breachBank: readonly [string, string]
   /** Human-readable target name used in generated demand-popup copy. */
   demandFlavor: string
+  palette: LayerPalette
+  /** Panel type ids first available at this depth -- pools are cumulative. */
+  unlocks: readonly string[]
+  /** Minimum concurrent panels at this depth, so deep layers start busy. */
+  panelFloor: number
+  /** Scales panel size/complexity with depth (0..1). */
+  sizeBias: number
 }
 
 const LAYER_DEFS: Record<LayerId, LayerDef> = {
@@ -42,6 +66,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     ],
     breachBank: ['flavor', 'ambientSuccess'],
     demandFlavor: 'perimeter gateway',
+    palette: {
+      fg: '#39ff6a', fgDim: '#1e8f3d', fgBright: '#baffcf', accent2: '#0ff0a0',
+      glow: '#39ff6a', bgDeep: '#020302', panel: '#0a120a', panelEdge: '#1c3a1c',
+    },
+    unlocks: ['ports', 'brute'],
+    panelFloor: 3,
+    sizeBias: 0,
   },
   perimeter: {
     id: 'perimeter',
@@ -53,6 +84,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     ],
     breachBank: ['exploit', 'shell'],
     demandFlavor: 'firewall cluster',
+    palette: {
+      fg: '#31e5ff', fgDim: '#1a7f96', fgBright: '#c4f6ff', accent2: '#00b8ff',
+      glow: '#31e5ff', bgDeep: '#01070a', panel: '#07141a', panelEdge: '#143f4d',
+    },
+    unlocks: ['cipher', 'nodePath'],
+    panelFloor: 3,
+    sizeBias: 0.2,
   },
   intranet: {
     id: 'intranet',
@@ -64,6 +102,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     ],
     breachBank: ['crypto', 'decrypt'],
     demandFlavor: 'internal directory service',
+    palette: {
+      fg: '#ffb339', fgDim: '#94631a', fgBright: '#ffe2b0', accent2: '#ff8c1a',
+      glow: '#ffb339', bgDeep: '#0a0602', panel: '#160f05', panelEdge: '#4a3312',
+    },
+    unlocks: ['fileExfil'],
+    panelFloor: 4,
+    sizeBias: 0.4,
   },
   core: {
     id: 'core',
@@ -75,6 +120,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     ],
     breachBank: ['exploit', 'privesc'],
     demandFlavor: 'core database cluster',
+    palette: {
+      fg: '#ff45d9', fgDim: '#932a7d', fgBright: '#ffc9f3', accent2: '#c06bff',
+      glow: '#ff45d9', bgDeep: '#08020a', panel: '#150618', panelEdge: '#4a1745',
+    },
+    unlocks: ['keyRecovery'],
+    panelFloor: 4,
+    sizeBias: 0.6,
   },
   kernel: {
     id: 'kernel',
@@ -86,6 +138,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     ],
     breachBank: ['physical', 'scada'],
     demandFlavor: 'hypervisor control plane',
+    palette: {
+      fg: '#eaf4ff', fgDim: '#7c8794', fgBright: '#ffffff', accent2: '#9fd4ff',
+      glow: '#cfe4ff', bgDeep: '#050709', panel: '#0d1116', panelEdge: '#2c3742',
+    },
+    unlocks: ['traceDefense'],
+    panelFloor: 5,
+    sizeBias: 0.8,
   },
   physical: {
     id: 'physical',
@@ -101,7 +160,24 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     ],
     breachBank: ['physical', 'blackout'],
     demandFlavor: 'building control systems',
+    palette: {
+      fg: '#ff4a3d', fgDim: '#93251d', fgBright: '#ffc7c1', accent2: '#ff8a2b',
+      glow: '#ff4a3d', bgDeep: '#0a0202', panel: '#180706', panelEdge: '#511a15',
+    },
+    unlocks: ['signalAlign'],
+    panelFloor: 5,
+    sizeBias: 1,
   },
+}
+
+/** Panel types available at a given depth -- cumulative across all shallower layers. */
+export function unlockedPanelTypes(layer: LayerId): string[] {
+  const out: string[] = []
+  for (const id of LAYER_ORDER) {
+    out.push(...LAYER_DEFS[id].unlocks)
+    if (id === layer) break
+  }
+  return out
 }
 
 export function layerDef(id: LayerId): LayerDef {

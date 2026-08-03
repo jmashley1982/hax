@@ -2,8 +2,8 @@ import { pick, type Rng } from '@/core/rng'
 import type { GameState } from '@/core/state'
 import type { WindowManager } from '@/ui/windows/manager'
 import type { TaskPanel } from '@/ui/panels/panel'
-import { LAYER_POOLS, PANEL_TYPES, pickPanelType } from '@/ui/panels/registry'
-import type { LayerSystem } from './layers'
+import { PANEL_TYPES, pickPanelType } from '@/ui/panels/registry'
+import { unlockedPanelTypes, type LayerSystem } from './layers'
 
 /**
  * The spawn director -- what actually drives the screen now.
@@ -19,7 +19,12 @@ import type { LayerSystem } from './layers'
  * back after a breakthrough ("simplifying"), then climbs again at the new
  * depth.
  */
-const SPAWN_COOLDOWN_MS = 900
+/**
+ * Short enough that a cleared board refills fast (a player solving panels
+ * quickly should not be punished with an empty screen), long enough that
+ * panels arrive as a visible stagger rather than all at once.
+ */
+const SPAWN_COOLDOWN_MS = 380
 
 export class Director {
   private panels: TaskPanel[] = []
@@ -38,11 +43,15 @@ export class Director {
     return this.panels
   }
 
-  /** How many panels should be alive right now, given depth and tension. */
+  /**
+   * How many panels should be alive right now. The floor rises with depth
+   * so the physical layer *starts* as busy as the surface layer ends --
+   * part of making the descent feel like escalation.
+   */
   private get desiredCount(): number {
-    const base = 3
+    const floor = this.layers.current.panelFloor
     const byTension = Math.floor(this.layers.tension * 3)
-    return Math.min(6, base + byTension)
+    return Math.min(7, floor + byTension)
   }
 
   tick(dtMs: number): void {
@@ -62,7 +71,7 @@ export class Director {
   }
 
   spawn(): TaskPanel | null {
-    const pool = LAYER_POOLS[this.state.layer]
+    const pool = unlockedPanelTypes(this.state.layer)
     const activeTypes = this.panels.map((p) => p.id.split('-')[0] ?? '')
     const typeId = pickPanelType(pool, activeTypes, (arr) => pick(this.rng, arr))
     const factory = PANEL_TYPES[typeId]
@@ -70,7 +79,9 @@ export class Director {
 
     const panel = factory(this.manager, {
       rng: this.rng,
-      intensity: Math.min(1, this.layers.tension),
+      // Size/complexity comes from depth first, tension second -- so deep
+      // panels are visibly denser than shallow ones regardless of timing.
+      intensity: Math.min(1, this.layers.current.sizeBias * 0.7 + this.layers.tension * 0.3),
       onComplete: (p) => this.onPanelComplete(p),
       onProgress: (p, d) => this.onPanelProgress(p, d),
     })

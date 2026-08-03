@@ -1,5 +1,5 @@
 import { store } from '@/core/store'
-import type { GameState } from '@/core/state'
+import { LAYER_ORDER, type GameState } from '@/core/state'
 
 /**
  * Top-right HUD: score, layer, breach progress, heat. The breach bar is
@@ -14,6 +14,7 @@ export class Hud {
   private heatFill: HTMLElement
   private heatValue: HTMLElement
   private scoreValue: HTMLElement
+  private ladderEl!: HTMLElement
 
   constructor(
     mountPoint: HTMLElement,
@@ -27,6 +28,19 @@ export class Hud {
     scoreRow.className = 'hud__row hud__score'
     this.scoreValue = document.createElement('span')
     scoreRow.appendChild(this.scoreValue)
+
+    // The layer ladder: all six depths, so progression is visible at a
+    // glance instead of being a single word that changes.
+    const ladder = document.createElement('div')
+    ladder.className = 'hud__ladder'
+    for (const id of LAYER_ORDER) {
+      const step = document.createElement('span')
+      step.className = 'hud__ladder-step'
+      step.dataset.layer = id
+      step.textContent = id.toUpperCase()
+      ladder.appendChild(step)
+    }
+    this.ladderEl = ladder
 
     const layerRow = document.createElement('div')
     layerRow.className = 'hud__row'
@@ -63,7 +77,7 @@ export class Hud {
     this.heatValue.className = 'hud__value'
     heatRow.append(heatLabel, heatBar, this.heatValue)
 
-    this.el.append(scoreRow, layerRow, breachRow, heatRow)
+    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow)
     mountPoint.appendChild(this.el)
 
     this.render()
@@ -76,6 +90,13 @@ export class Hud {
 
     const breachPct = Math.min(100, Math.round(this.getTension() * 100))
     this.breachFill.style.width = `${breachPct}%`
+
+    const currentIdx = LAYER_ORDER.indexOf(this.state.layer)
+    for (const step of Array.from(this.ladderEl.children) as HTMLElement[]) {
+      const idx = LAYER_ORDER.indexOf(step.dataset.layer as (typeof LAYER_ORDER)[number])
+      step.classList.toggle('is-passed', idx < currentIdx)
+      step.classList.toggle('is-current', idx === currentIdx)
+    }
 
     const heat = Math.round(this.state.heat)
     this.heatValue.textContent = `${heat}%`
