@@ -37,7 +37,14 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      # enablement:true turns Pages on via the API (and sets the source to
+      # GitHub Actions) if it isn't already, so a fresh clone of this repo
+      # deploys without anyone having to visit Settings -> Pages first.
+      # Without it the first run fails with "Get Pages site failed... verify
+      # that the repository has Pages enabled".
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       # The whole app is one self-contained dist/index.html (vite-plugin-
       # singlefile) plus a favicon -- see vite.config.ts's header comment
