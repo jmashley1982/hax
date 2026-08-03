@@ -22,6 +22,8 @@ export interface PanelContext {
   rng: Rng
   /** Difficulty scalar 0..1 from layer depth -- panels stay easy, this only nudges size. */
   intensity: number
+  /** Layer rule in effect (see LayerModifier) -- changes how panels behave, not just look. */
+  modifier: string
   onComplete: (panel: TaskPanel) => void
   onProgress: (panel: TaskPanel, delta: number) => void
 }
@@ -40,6 +42,9 @@ export abstract class TaskPanel {
   private titleBase: string
   private ctx: PanelContext
   private progress01 = 0
+  private sealed = false
+  private sealEl: HTMLElement | null = null
+  private lastTouched = 0
 
   constructor(manager: WindowManager, ctx: PanelContext, id: string, title: string) {
     this.id = id
@@ -72,9 +77,17 @@ export abstract class TaskPanel {
 
   /**
    * Raw keystrokes routed here when this panel is the focused target.
-   * Panels that don't reward mashing can ignore it (default: no-op).
+   *
+   * Returns whether the keystroke was actually *used*. Panels that are
+   * momentarily unable to act (mid-animation, nothing left to reveal)
+   * return false so the shell can immediately hand the keystroke to
+   * another panel. Without this, a panel with a short lockout silently
+   * swallows hundreds of keypresses at mashing speed and the run appears
+   * to freeze -- which is exactly what happened at the CORE layer.
    */
-  onKeyBurst(): void {}
+  onKeyBurst(): boolean {
+    return false
+  }
 
   /** Short human-readable "what to do" line, shown in the objective bar. */
   abstract get objectiveText(): string
@@ -82,6 +95,50 @@ export abstract class TaskPanel {
   protected init(): void {
     this.buildBody()
     this.renderProgress()
+    if (this.ctx.modifier === 'sealed' || this.ctx.modifier === 'total') this.applySeal()
+  }
+
+  /**
+   * SEALED layers: the panel arrives behind a cover that takes one click
+   * to break. Cheap to clear, but it changes the rhythm -- you must open
+   * a node before you can work it.
+   */
+  private applySeal(): void {
+    this.sealed = true
+    const seal = document.createElement('button')
+    seal.className = 'panel__seal'
+    seal.textContent = '🔒 SEALED — CLICK OR TYPE TO BREACH'
+    seal.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.breakSeal()
+    })
+    this.win.el.appendChild(seal)
+    this.sealEl = seal
+  }
+
+  /**
+   * Breaking the seal is available to *both* clicking and typing on
+   * purpose: making it click-only stalled the flow in deeper layers,
+   * forcing the player to stop mashing and hunt for windows.
+   */
+  protected breakSeal(): void {
+    if (!this.sealed) return
+    this.sealed = false
+    this.sealEl?.classList.add('is-breaking')
+    const el = this.sealEl
+    setTimeout(() => el?.remove(), 260)
+    this.sealEl = null
+    this.floatText('UNSEALED')
+    this.pulse()
+  }
+
+  /** DECAY layers: untouched panels slowly bleed progress. */
+  tickDecayModifier(dtMs: number): void {
+    if (this.isDone || this.sealed) return
+    if (this.ctx.modifier !== 'decay' && this.ctx.modifier !== 'total') return
+    const idleMs = performance.now() - this.lastTouched
+    if (idleMs < 2500) return
+    this.decayProgress((0.02 * dtMs) / 1000)
   }
 
   get element(): HTMLElement {
@@ -90,6 +147,22 @@ export abstract class TaskPanel {
 
   get isDone(): boolean {
     return this.state === 'cracked'
+  }
+
+  get isSealed(): boolean {
+    return this.sealed
+  }
+
+  /** Public entry point for the shell to spend a keystroke on the seal. */
+  breakSealFromInput(): void {
+    this.breakSeal()
+  }
+
+  /** LINKED layers: a sibling crack pushes this panel along too. */
+  applyLinkedBoost(amount: number): void {
+    if (this.isDone || this.sealed) return
+    this.floatText('+LINKED')
+    this.addProgress(amount)
   }
 
   setTargeted(targeted: boolean): void {
@@ -102,11 +175,22 @@ export abstract class TaskPanel {
    */
   protected addProgress(delta01: number): void {
     if (this.isDone) return
+    // A sealed panel absorbs the input as a nudge, but doesn't advance --
+    // the seal has to be broken first.
+    if (this.sealed) {
+      this.pulse()
+      return
+    }
+    this.lastTouched = performance.now()
     this.progress01 = Math.min(1, this.progress01 + delta01)
     this.renderProgress()
     this.pulse()
     this.ctx.onProgress(this, delta01)
-    if (this.progress01 >= 1) this.complete()
+    // Epsilon, not `>= 1`. Panels advance by 1/N per step, and N additions
+    // of 1/N sum to 0.999... in floating point -- so an exact comparison
+    // left finished panels stuck at "6/6" forever, swallowing every
+    // subsequent keystroke and freezing the run.
+    if (this.progress01 >= 0.999) this.complete()
   }
 
   /** Decay for panels that require sustained input (brute force). */

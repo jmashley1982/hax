@@ -46,8 +46,10 @@ export class BruteForcePanel extends TaskPanel {
     this.setTitleSuffix('0%')
   }
 
-  override onKeyBurst(): void {
+  override onKeyBurst(): boolean {
+    if (this.isDone) return false
     this.hit()
+    return true
   }
 
   /** Called from the shell's tick so the bar visibly sags when input stops. */

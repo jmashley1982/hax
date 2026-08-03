@@ -60,14 +60,15 @@ export class SignalAlignPanel extends TaskPanel {
     this.updateTitle()
   }
 
-  override onKeyBurst(): void {
-    if (this.isDone) return
+  override onKeyBurst(): boolean {
+    if (this.isDone) return false
     // Mashing steps the tuner toward the band -- slower than dragging, but
     // never a no-op.
     const current = Number(this.slider.value)
     const step = current < this.target ? 4 : -4
     this.slider.value = String(Math.max(0, Math.min(100, current + step)))
     this.evaluate()
+    return true
   }
 
   private evaluate(): void {

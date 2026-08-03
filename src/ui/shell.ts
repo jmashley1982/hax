@@ -67,11 +67,21 @@ export class Shell {
 
     new Terminal(this.shellEl)
     new CrtOverlay(this.shellEl, state.seed)
-    new Prompt(
-      this.shellEl,
-      (char) => this.handleKey(char),
-      (line) => this.handleSubmit(line),
-    )
+    new Prompt(this.shellEl, {
+      onKey: (char) => this.handleKey(char),
+      onSubmit: (line) => this.handleSubmit(line),
+      // A finished generated command prints to the terminal as if it ran,
+      // so mashing produces a stream of plausible shell history.
+      onCommandRun: (text) => {
+        store.emit('terminal:line', { text: `$ ${text}`, tone: 'system', speed: 0 })
+        store.emit('terminal:line', {
+          text: this.content.line(...this.layers.current.burstSources[0]!),
+          tone: 'dim',
+          speed: 0,
+        })
+      },
+      nextCommand: () => this.content.line('shell', 'cmd'),
+    })
     new Hud(this.shellEl, state, () => this.layers.tension)
     this.objective = new ObjectiveBar(this.shellEl)
 
@@ -159,10 +169,26 @@ export class Shell {
     this.renderObjective()
   }
 
-  /** Pick a target if we have none (or the old one was cleared). */
+  /**
+   * Keep focus on something the player can actually act on.
+   *
+   * This used to only re-target when the current panel *completed*, which
+   * worked early on (panels finish fast) but broke in the deeper layers:
+   * focus would settle on a sealed or finished panel, mashing would land
+   * on something that couldn't advance, and the player was forced to click
+   * around to keep going. Now anything unworkable is skipped, so typing
+   * never stalls.
+   */
   private refreshTarget(): void {
-    if (this.targetPanel && !this.targetPanel.isDone) return
-    const next = this.director.activePanels.find((p) => !p.isDone) ?? null
+    const workable = (p: TaskPanel): boolean => !p.isDone && !p.isSealed
+    if (this.targetPanel && workable(this.targetPanel)) return
+
+    const next =
+      this.director.activePanels.find(workable) ??
+      // Everything is sealed -- fall back to any live panel so mashing can
+      // break a seal rather than hitting a dead end.
+      this.director.activePanels.find((p) => !p.isDone) ??
+      null
     this.setTarget(next)
   }
 
@@ -189,7 +215,44 @@ export class Shell {
     if (profile.keyGain <= 0) return
 
     this.refreshTarget()
-    this.targetPanel?.onKeyBurst()
+    const target = this.targetPanel
+    if (!target) return
+
+    // A sealed panel spends the keystroke breaking its seal, so mashing
+    // never dead-ends and the player never has to stop to click.
+    if (target.isSealed) {
+      target.breakSealFromInput()
+      return
+    }
+
+    // If the focused panel can't use this keystroke right now (mid-flip,
+    // nothing left to reveal), roll it on to the next panel that can. This
+    // is what keeps focus flowing on its own instead of the player having
+    // to click around, and it guarantees no keystroke is ever wasted.
+    if (target.onKeyBurst()) return
+    for (const other of this.director.activePanels) {
+      if (other === target || other.isDone) continue
+      if (other.isSealed) {
+        other.breakSealFromInput()
+        this.setTarget(other)
+        return
+      }
+      if (other.onKeyBurst()) {
+        this.setTarget(other)
+        return
+      }
+    }
+
+    // Last resort: nothing on the board could take the keystroke right now
+    // (e.g. every panel is mid-animation or waiting on a timer). Nudge the
+    // breach directly so sustained input can never fully dead-end -- a
+    // frozen run is worse than a small unattributed gain.
+    this.applyResidualProgress()
+  }
+
+  private applyResidualProgress(): void {
+    if (this.elapsedMs < this.breakthroughGraceUntil) return
+    if (this.layers.addProgress(0.6)) this.handleBreakthrough()
   }
 
   private handleSubmit(line: string): void {
@@ -229,11 +292,23 @@ export class Shell {
   private onPanelComplete(panel: TaskPanel): void {
     awardScore(this.state, 120)
     this.heat.add(-6)
+
+    // LINKED layers: cracking one node drags its neighbours along, so the
+    // board cascades instead of being worked strictly one at a time.
+    const mod = this.layers.current.modifier
+    if (mod === 'linked' || mod === 'total') {
+      for (const other of this.director.activePanels) {
+        if (other !== panel) other.applyLinkedBoost(0.25)
+      }
+    }
     store.emit('terminal:line', {
       text: this.content.line(...this.layers.current.breachBank),
       tone: 'success',
       speed: 2,
     })
+    // Hand focus straight to the next workable panel so the player's
+    // typing carries on uninterrupted instead of stalling on a finished
+    // window.
     if (this.targetPanel === panel) this.setTarget(null)
     this.refreshTarget()
     this.renderObjective()
@@ -303,7 +378,14 @@ export class Shell {
       tone: 'success',
       speed: 2,
     })
-    this.objective.set(`descending to ${next.title} -- unlocked ${newTools}`)
+    // Announce the rule change too -- the modifier is what makes this depth
+    // play differently, so it has to be legible.
+    store.emit('terminal:line', {
+      text: `>> ${next.modifierText}`,
+      tone: 'warning',
+      speed: 2,
+    })
+    this.objective.set(`${next.title}: ${next.modifierText}`)
 
     setTimeout(() => {
       for (let i = 0; i < next.panelFloor; i++) this.director.spawn()

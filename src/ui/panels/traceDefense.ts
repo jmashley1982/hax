@@ -40,26 +40,33 @@ export class TraceDefensePanel extends TaskPanel {
     this.field.appendChild(core)
     this.root.appendChild(this.field)
 
-    for (let i = 0; i < 2; i++) this.spawnPing()
+    for (let i = 0; i < 3; i++) this.spawnPing()
     this.updateTitle()
   }
 
-  override onKeyBurst(): void {
-    // Mashing fires flak at the closest ping.
+  override onKeyBurst(): boolean {
+    if (this.isDone) return false
+    // Mashing fires flak at the closest ping. With nothing in flight the
+    // keystroke rolls on to another panel rather than being wasted.
     const closest = this.pings.reduce<{ el: HTMLElement; pos: number; speed: number } | null>(
       (best, p) => (!best || p.pos > best.pos ? p : best),
       null,
     )
-    if (closest) this.block(closest)
+    if (!closest) return false
+    this.block(closest)
+    return true
   }
 
   /** Driven from the shell tick so pings actually advance. */
   tickPings(dtMs: number): void {
     if (this.isDone) return
     this.spawnTimer -= dtMs
-    if (this.spawnTimer <= 0 && this.pings.length < 4) {
+    // Keep pings flowing briskly. Sparse spawns left this panel with
+    // nothing to shoot at, which stalled a mashing player who'd rolled
+    // onto it.
+    if (this.spawnTimer <= 0 && this.pings.length < 5) {
       this.spawnPing()
-      this.spawnTimer = int(this.rng, 900, 1800)
+      this.spawnTimer = int(this.rng, 260, 700)
     }
     for (const ping of [...this.pings]) {
       ping.pos = Math.min(100, ping.pos + (ping.speed * dtMs) / 1000)

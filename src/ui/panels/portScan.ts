@@ -62,15 +62,16 @@ export class PortScanPanel extends TaskPanel {
    * fix. Clicking is still faster and more precise; this just guarantees a
    * key is never a no-op.
    */
-  override onKeyBurst(): void {
-    if (this.isDone) return
+  override onKeyBurst(): boolean {
+    if (this.isDone) return false
     const cells = Array.from(this.root.querySelectorAll<HTMLElement>('.cell'))
     const unresolved = cells.filter(
       (c) => !c.classList.contains('is-open') && !c.classList.contains('is-closed'),
     )
     const target = unresolved[0]
-    if (!target) return
+    if (!target) return false
     this.probe(Number(target.dataset.idx), target)
+    return true
   }
 
   private probe(idx: number, cell: HTMLElement): void {

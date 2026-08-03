@@ -1,4 +1,4 @@
-import { hex, shuffle } from '@/core/rng'
+import { hex, pick, shuffle } from '@/core/rng'
 import type { WindowManager } from '@/ui/windows/manager'
 import { TaskPanel, type PanelContext } from './panel'
 
@@ -55,10 +55,27 @@ export class KeyRecoveryPanel extends TaskPanel {
     this.updateTitle()
   }
 
-  override onKeyBurst(): void {
-    if (this.busy) return
-    const idx = this.cells.findIndex((c, i) => !c.locked && !this.revealed.includes(i))
-    if (idx >= 0) this.reveal(idx)
+  /**
+   * Picks a RANDOM eligible cell, not the first one.
+   *
+   * Taking the first match deadlocked the panel under sustained mashing:
+   * cells 0 and 1 would be revealed, fail to match, re-hide, and then get
+   * picked again identically forever -- progress froze and the player was
+   * forced to click. Randomising guarantees the pair eventually differs.
+   */
+  override onKeyBurst(): boolean {
+    // Returning false while mid-flip is essential: the shell then rolls
+    // this keystroke on to another panel instead of it being swallowed by
+    // the re-hide delay. At mashing speed that lockout ate hundreds of
+    // presses and made the whole run look frozen.
+    if (this.busy || this.isDone) return false
+    const candidates: number[] = []
+    this.cells.forEach((c, i) => {
+      if (!c.locked && !this.revealed.includes(i)) candidates.push(i)
+    })
+    if (candidates.length === 0) return false
+    this.reveal(pick(this.rng, candidates))
+    return true
   }
 
   private reveal(idx: number): void {

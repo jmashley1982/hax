@@ -64,10 +64,12 @@ export class CipherLockPanel extends TaskPanel {
    * tile deliberately, but guarantees a keystroke is never a no-op -- a
    * targeted panel that ignores keys is what made mashing feel broken.
    */
-  override onKeyBurst(): void {
-    if (this.isDone) return
+  override onKeyBurst(): boolean {
+    if (this.isDone) return false
     const slot = this.slots.find((s) => !s.locked)
-    if (slot) this.advance(slot)
+    if (!slot) return false
+    this.advance(slot)
+    return true
   }
 
   private advance(slot: { el: HTMLElement; current: number; target: number; locked: boolean }): void {

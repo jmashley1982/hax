@@ -54,8 +54,13 @@ export class NodePathPanel extends TaskPanel {
     this.updateTitle()
   }
 
-  override onKeyBurst(): void {
-    if (!this.isDone) this.hop(this.reached)
+  override onKeyBurst(): boolean {
+    // Guard that a hop is actually available before claiming the
+    // keystroke -- reporting a no-op as consumed makes this panel a sink
+    // that silently eats input.
+    if (this.isDone || this.reached >= this.hops.length) return false
+    this.hop(this.reached)
+    return true
   }
 
   private hop(idx: number): void {

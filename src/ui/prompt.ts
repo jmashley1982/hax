@@ -1,41 +1,44 @@
 /**
- * The typed command line. Global keydown capture (matching the rest of
- * Phase 1/2's approach) rather than a focusable <input> -- keeps behavior
- * consistent with "any keystroke anywhere counts as input" and avoids
- * fighting focus management with the rest of the shell. Proper
- * accessible-input support (mobile virtual keyboards, IME) is future
- * polish, not required for the film-prop / desktop-browser use case this
- * targets first.
+ * The command line.
+ *
+ * It never echoes raw keystrokes. Mashing "adfjkl" and seeing "adfjkl"
+ * appear destroys the illusion instantly, so instead each keystroke
+ * reveals one more character of a *generated* shell command (see
+ * content/banks/shell.ts). Hammering the keyboard therefore reads as a
+ * hacker typing fast, and when a command finishes revealing it "runs":
+ * it prints to the terminal and a fresh one starts.
+ *
+ * A hidden buffer still records what was actually typed, so deliberately
+ * typing a real keyword ("scan", "exploit") is matched by the command
+ * router exactly as before -- the player gets the hacker-jargon look
+ * without losing intentional play.
  */
-/**
- * How long the typed buffer survives without a keystroke before clearing.
- * Without this, mashing in HYBRID builds a several-hundred-character
- * nonsense line that then gets submitted as a "command" -- the buffer has
- * to be a command line for deliberate typing and invisible during mashing.
- */
-const BUFFER_IDLE_CLEAR_MS = 1400
 
-/**
- * Hard cap on buffer length. The idle-clear above only fires once typing
- * *stops*, so sustained mashing (no gaps) would grow the buffer without
- * bound and flood the screen with garbage. No real command is anywhere
- * near this long.
- */
-const BUFFER_MAX = 64
+/** Clears the hidden intent buffer once typing stops, so mashing never accumulates into a bogus "command". */
+const INTENT_IDLE_CLEAR_MS = 1200
+
+export interface PromptCallbacks {
+  onKey: (char: string) => void
+  /** Fired when a deliberate typed word is submitted with Enter. */
+  onSubmit: (line: string) => void
+  /** Fired when a generated command finishes revealing itself. */
+  onCommandRun: (text: string) => void
+  /** Supplies the next generated command line. */
+  nextCommand: () => string
+}
 
 export class Prompt {
   private el: HTMLElement
-  private buffer = ''
+  private ghost: string
+  private revealed = 0
+  private intentBuffer = ''
   private clearTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(
-    mountPoint: HTMLElement,
-    private onKey: (char: string) => void,
-    private onSubmit: (line: string) => void,
-  ) {
+  constructor(mountPoint: HTMLElement, private cb: PromptCallbacks) {
     this.el = document.createElement('div')
     this.el.className = 'prompt'
     mountPoint.appendChild(this.el)
+    this.ghost = cb.nextCommand()
     this.render()
 
     window.addEventListener('keydown', this.handleKeydown)
@@ -45,45 +48,56 @@ export class Prompt {
     if (e.metaKey || e.ctrlKey || e.altKey) return
 
     if (e.key === 'Enter') {
-      const line = this.buffer.trim()
-      this.buffer = ''
-      this.render()
-      if (line) this.onSubmit(line)
+      const intent = this.intentBuffer.trim()
+      this.intentBuffer = ''
+      // Enter completes the current command line immediately.
+      this.runGhost()
+      if (intent) this.cb.onSubmit(intent)
       return
     }
+
     if (e.key === 'Backspace') {
       e.preventDefault()
-      this.buffer = this.buffer.slice(0, -1)
-      this.render()
-      this.onKey('Backspace')
+      this.intentBuffer = this.intentBuffer.slice(0, -1)
+      this.cb.onKey('Backspace')
       this.scheduleIdleClear()
       return
     }
+
     if (e.key.length === 1) {
-      // Keep driving panels even past the cap -- only the *display* buffer
-      // is bounded, so mashing never stops feeling responsive.
-      if (this.buffer.length < BUFFER_MAX) {
-        this.buffer += e.key
-        this.render()
-      }
-      this.onKey(e.key)
+      this.intentBuffer += e.key
+      // Reveal several characters per keystroke so a command completes in
+      // a satisfying handful of presses rather than dozens.
+      this.revealed = Math.min(this.ghost.length, this.revealed + 3)
+      this.render()
+      this.cb.onKey(e.key)
       this.scheduleIdleClear()
+      if (this.revealed >= this.ghost.length) this.runGhost()
     }
+  }
+
+  /** Print the finished command and start a fresh one. */
+  private runGhost(): void {
+    const text = this.ghost
+    if (this.revealed > 0) this.cb.onCommandRun(text)
+    this.ghost = this.cb.nextCommand()
+    this.revealed = 0
+    this.render()
   }
 
   private scheduleIdleClear(): void {
     if (this.clearTimer) clearTimeout(this.clearTimer)
     this.clearTimer = setTimeout(() => {
-      this.buffer = ''
-      this.render()
-    }, BUFFER_IDLE_CLEAR_MS)
+      this.intentBuffer = ''
+    }, INTENT_IDLE_CLEAR_MS)
   }
 
   private render(): void {
-    this.el.textContent = `> ${this.buffer}`
+    this.el.textContent = `> ${this.ghost.slice(0, this.revealed)}`
   }
 
   destroy(): void {
     window.removeEventListener('keydown', this.handleKeydown)
+    if (this.clearTimer) clearTimeout(this.clearTimer)
   }
 }

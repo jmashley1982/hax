@@ -151,6 +151,35 @@
   margin-bottom: 0.5rem;
 }
 
+/* ---- SEALED overlay (perimeter layer modifier) ---- */
+
+.panel__seal {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.82);
+  border: none;
+  color: var(--fg-bright);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  text-shadow: 0 0 8px var(--glow);
+}
+
+.panel__seal:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.panel__seal.is-breaking {
+  animation: seal-break 260ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes seal-break {
+  to { opacity: 0; transform: scale(1.08); }
+}
+
 /* ---- NODE PATH ---- */
 
 .node-chain {

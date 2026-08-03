@@ -58,6 +58,8 @@ export class Director {
     this.panels = this.panels.filter((p) => !p.isDone)
     this.spawnCooldown -= dtMs
 
+    for (const p of this.panels) p.tickDecayModifier(dtMs)
+
     if (this.panels.length < this.desiredCount && this.spawnCooldown <= 0) {
       this.spawn()
       this.spawnCooldown = SPAWN_COOLDOWN_MS
@@ -82,6 +84,7 @@ export class Director {
       // Size/complexity comes from depth first, tension second -- so deep
       // panels are visibly denser than shallow ones regardless of timing.
       intensity: Math.min(1, this.layers.current.sizeBias * 0.7 + this.layers.tension * 0.3),
+      modifier: this.layers.current.modifier,
       onComplete: (p) => this.onPanelComplete(p),
       onProgress: (p, d) => this.onPanelProgress(p, d),
     })

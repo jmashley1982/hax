@@ -66,9 +66,12 @@ export class FileExfilPanel extends TaskPanel {
     this.updateTitle()
   }
 
-  override onKeyBurst(): void {
+  override onKeyBurst(): boolean {
+    if (this.isDone) return false
     const next = this.rows.find((r) => !r.done)
-    if (next) this.pull(next)
+    if (!next) return false
+    this.pull(next)
+    return true
   }
 
   private pull(entry: { el: HTMLElement; fill: HTMLElement; pct: number; done: boolean }): void {

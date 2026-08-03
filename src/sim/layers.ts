@@ -53,13 +53,35 @@ export interface LayerDef {
   panelFloor: number
   /** Scales panel size/complexity with depth (0..1). */
   sizeBias: number
+  /**
+   * A rule change that makes this depth *play* differently, not just look
+   * different. Recolouring alone made every layer feel the same
+   * ("jumping to the next level is like WOW, cool, but then its just the
+   * same"), so each layer past the first alters the rules.
+   */
+  modifier: LayerModifier
+  /** One-line description of the modifier, announced on arrival. */
+  modifierText: string
 }
+
+export type LayerModifier =
+  | 'none'
+  /** Panels arrive locked; one click cracks the seal before you can work them. */
+  | 'sealed'
+  /** Ignored panels slowly lose progress, so you must rotate between them. */
+  | 'decay'
+  /** Two panels are linked -- solving one advances its twin. */
+  | 'linked'
+  /** Hostile traces roam; a trace panel is always present. */
+  | 'hunted'
+  /** All of the above, at full intensity. */
+  | 'total'
 
 const LAYER_DEFS: Record<LayerId, LayerDef> = {
   surface: {
     id: 'surface',
     title: 'SURFACE',
-    threshold: 240,
+    threshold: 150,
     burstSources: [
       ['netops', 'scanLine'],
       ['kernel', 'dmesg'],
@@ -73,11 +95,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     unlocks: ['ports', 'brute'],
     panelFloor: 3,
     sizeBias: 0,
+    modifier: 'none',
+    modifierText: 'open network -- no countermeasures',
   },
   perimeter: {
     id: 'perimeter',
     title: 'PERIMETER',
-    threshold: 340,
+    threshold: 190,
     burstSources: [
       ['exploit', 'stage'],
       ['warnings', 'idsAlert'],
@@ -91,11 +115,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     unlocks: ['cipher', 'nodePath'],
     panelFloor: 3,
     sizeBias: 0.2,
+    modifier: 'sealed',
+    modifierText: 'nodes arrive SEALED -- click once to break the seal',
   },
   intranet: {
     id: 'intranet',
     title: 'INTRANET',
-    threshold: 440,
+    threshold: 230,
     burstSources: [
       ['filesystem', 'dirEntry'],
       ['filesystem', 'grepHit'],
@@ -109,11 +135,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     unlocks: ['fileExfil'],
     panelFloor: 4,
     sizeBias: 0.4,
+    modifier: 'decay',
+    modifierText: 'idle nodes DECAY -- keep rotating between them',
   },
   core: {
     id: 'core',
     title: 'CORE',
-    threshold: 540,
+    threshold: 270,
     burstSources: [
       ['crypto', 'decrypt'],
       ['crypto', 'keygen'],
@@ -127,11 +155,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     unlocks: ['keyRecovery'],
     panelFloor: 4,
     sizeBias: 0.6,
+    modifier: 'linked',
+    modifierText: 'nodes are LINKED -- cracking one advances its twin',
   },
   kernel: {
     id: 'kernel',
     title: 'KERNEL',
-    threshold: 640,
+    threshold: 310,
     burstSources: [
       ['exploit', 'privesc'],
       ['kernel', 'dmesg'],
@@ -145,6 +175,8 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     unlocks: ['traceDefense'],
     panelFloor: 5,
     sizeBias: 0.8,
+    modifier: 'hunted',
+    modifierText: 'you are HUNTED -- traces incoming, block them',
   },
   physical: {
     id: 'physical',
@@ -167,6 +199,8 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     unlocks: ['signalAlign'],
     panelFloor: 5,
     sizeBias: 1,
+    modifier: 'total',
+    modifierText: 'FULL LOCKDOWN -- everything at once',
   },
 }
 
