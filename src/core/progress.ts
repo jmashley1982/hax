@@ -65,7 +65,6 @@ export const MODE_PROFILES: Record<InteractionMode, ModeProfile> = {
 
 /** Progress contributed by one evaluated input under a given mode profile. */
 export function computeProgress(evaluated: EvaluatedInput, profile: ModeProfile): number {
-  if (!evaluated.effective) return 0
   const base =
     evaluated.event.kind === 'key'
       ? profile.keyGain

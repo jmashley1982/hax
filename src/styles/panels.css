@@ -1,0 +1,161 @@
+.panel {
+  min-width: 260px;
+  max-width: 292px;
+}
+
+.panel__body {
+  min-height: 60px;
+}
+
+/* The universal "your input landed" flash. Every panel action triggers it. */
+.panel.is-hit {
+  animation: panel-hit 180ms ease-out;
+}
+
+@keyframes panel-hit {
+  0% {
+    box-shadow: 0 0 0 0 var(--fg), 0 0 24px rgba(0, 0, 0, 0.6);
+    border-color: var(--fg-bright);
+  }
+  100% {
+    box-shadow: 0 0 0 6px rgba(57, 255, 106, 0), 0 0 24px rgba(0, 0, 0, 0.6);
+    border-color: var(--panel-edge);
+  }
+}
+
+/* The panel the user should act on / that mashing currently drives. */
+.panel.is-targeted {
+  border-color: var(--fg);
+  box-shadow: 0 0 18px rgba(57, 255, 106, 0.28), inset 0 0 40px rgba(0, 0, 0, 0.35);
+}
+
+.panel.is-targeted .win__title {
+  background: rgba(57, 255, 106, 0.12);
+}
+
+.panel.is-cracked {
+  border-color: var(--ok);
+  animation: panel-cracked 500ms ease-out;
+}
+
+@keyframes panel-cracked {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.panel__rail {
+  margin-top: 0.6rem;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-edge);
+  overflow: hidden;
+}
+
+.panel__rail-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent-2);
+  transition: width 90ms linear;
+}
+
+.panel__float {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: bold;
+  text-shadow: 0 0 8px var(--glow);
+  pointer-events: none;
+  animation: panel-float 900ms ease-out forwards;
+}
+
+@keyframes panel-float {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-26px);
+  }
+}
+
+/* ---- shared interactive bits ---- */
+
+.cell-grid {
+  display: grid;
+  gap: 4px;
+}
+
+.cell {
+  border: 1px solid var(--panel-edge);
+  background: var(--bg-deep);
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 6px 2px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 120ms, color 120ms, border-color 120ms;
+}
+
+.cell:hover:not(.is-open):not(.is-closed):not(.is-locked) {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+
+.cell.is-open {
+  background: rgba(57, 255, 106, 0.18);
+  border-color: var(--ok);
+  color: var(--fg-bright);
+}
+
+.cell.is-closed {
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.18);
+  cursor: default;
+}
+
+.cell.is-locked {
+  background: rgba(57, 255, 106, 0.25);
+  border-color: var(--ok);
+  color: var(--fg-bright);
+  cursor: default;
+}
+
+.cell.is-flash {
+  animation: cell-flash 220ms ease-out;
+}
+
+@keyframes cell-flash {
+  0% {
+    background: var(--fg);
+    color: var(--bg-deep);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.panel__hint {
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin-bottom: 0.5rem;
+}
+
+.panel__readout {
+  font-size: 18px;
+  letter-spacing: 0.18em;
+  color: var(--fg-bright);
+  text-shadow: 0 0 8px var(--glow);
+  margin-bottom: 0.4rem;
+  word-break: break-all;
+}

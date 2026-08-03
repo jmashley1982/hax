@@ -7,9 +7,18 @@
  * polish, not required for the film-prop / desktop-browser use case this
  * targets first.
  */
+/**
+ * How long the typed buffer survives without a keystroke before clearing.
+ * Without this, mashing in HYBRID builds a several-hundred-character
+ * nonsense line that then gets submitted as a "command" -- the buffer has
+ * to be a command line for deliberate typing and invisible during mashing.
+ */
+const BUFFER_IDLE_CLEAR_MS = 1400
+
 export class Prompt {
   private el: HTMLElement
   private buffer = ''
+  private clearTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     mountPoint: HTMLElement,
@@ -39,13 +48,23 @@ export class Prompt {
       this.buffer = this.buffer.slice(0, -1)
       this.render()
       this.onKey('Backspace')
+      this.scheduleIdleClear()
       return
     }
     if (e.key.length === 1) {
       this.buffer += e.key
       this.render()
       this.onKey(e.key)
+      this.scheduleIdleClear()
     }
+  }
+
+  private scheduleIdleClear(): void {
+    if (this.clearTimer) clearTimeout(this.clearTimer)
+    this.clearTimer = setTimeout(() => {
+      this.buffer = ''
+      this.render()
+    }, BUFFER_IDLE_CLEAR_MS)
   }
 
   private render(): void {

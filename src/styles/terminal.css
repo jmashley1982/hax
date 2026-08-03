@@ -1,12 +1,22 @@
+/* The terminal is background texture now, not the app. The interactive
+   panels are the foreground (plan §13c) -- so this is a dimmed strip down
+   the left that keeps the screen feeling alive without competing for
+   attention with the things you actually click. */
 .terminal {
   position: absolute;
-  inset: 0;
-  padding: 2.5rem 3rem 6rem;
+  left: 0;
+  top: 3.2rem;
+  bottom: 3.5rem;
+  width: min(30vw, 380px);
+  padding: 0 1rem;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
-  font-size: clamp(13px, 1.3vw, 17px);
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.42;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
 }
 
 .terminal::-webkit-scrollbar {

@@ -9,6 +9,12 @@ export interface WindowOptions {
   modal?: boolean
   closable?: boolean
   decor?: 'normal' | 'danger'
+  /**
+   * Exempt from the manager's oldest-first eviction. Task panels set this:
+   * without it, spawning a 7th window silently closes a panel the player is
+   * halfway through solving.
+   */
+  pinned?: boolean
   x: number
   y: number
 }
@@ -86,6 +92,15 @@ export class Win {
 
   get isModal(): boolean {
     return this.opts.modal ?? false
+  }
+
+  get isPinned(): boolean {
+    return this.opts.pinned ?? false
+  }
+
+  setTitle(text: string): void {
+    const el = this.el.querySelector('.win__title-text')
+    if (el) el.textContent = text
   }
 
   onClose(fn: () => void): void {

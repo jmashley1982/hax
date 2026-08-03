@@ -1,12 +1,20 @@
 /**
- * Normalizes raw DOM input (keydown, click, submitted command lines) into a
- * single InputEvent stream, and rate-limits it with a token bucket so
- * holding a key down doesn't linearly fast-forward the game.
+ * Normalizes raw DOM input into a single InputEvent stream.
  *
  * This module does not attach its own DOM listeners — ui/shell.ts and
  * ui/prompt.ts feed events in via `push()`. That keeps this file testable
  * without a DOM and keeps "what counts as input" in one place instead of
  * scattered across UI code.
+ *
+ * NOTE: this used to rate-limit keystrokes through a token bucket
+ * (capacity 12, refill 6/sec) so that holding a key couldn't fast-forward
+ * an invisible progress counter. That made sense when input fed a hidden
+ * accumulator. It is actively wrong now that a keystroke drives a *visible
+ * panel*: mashing at ~20 keys/sec had roughly 14 of them silently
+ * discarded, which is precisely the "my inputs feel like they have zero
+ * meaning" failure (plan §13c). Every keystroke now counts. Panels govern
+ * their own pacing via progress-per-hit and decay instead, where the
+ * player can actually see it happening.
  */
 
 export type InputKind = 'key' | 'click' | 'submit'
@@ -19,32 +27,16 @@ export interface InputEvent {
 
 export interface EvaluatedInput {
   event: InputEvent
-  /** 0..~1.6 multiplier: rewards varied input, punishes holding one key. */
+  /** 0.4..1.6 multiplier: rewards varied input over holding one key down. */
   variety: number
-  /** Whether the token bucket had capacity -- if not, this input is "free" (echoes/fx still fine) but contributes no progress. */
-  effective: boolean
 }
 
-const BUCKET_CAPACITY = 12
-const BUCKET_REFILL_PER_SEC = 6
 const VARIETY_WINDOW = 24
 
 export class InputPipeline {
-  private tokens = BUCKET_CAPACITY
   private recentKeys: string[] = []
 
-  /** Call every tick with elapsed ms to refill the bucket. */
-  refill(dtMs: number): void {
-    this.tokens = Math.min(BUCKET_CAPACITY, this.tokens + (BUCKET_REFILL_PER_SEC * dtMs) / 1000)
-  }
-
   push(event: InputEvent): EvaluatedInput {
-    // Only raw keystrokes are bucket-limited -- clicks are naturally paced
-    // by human click speed, and submitted commands are deliberate one-shot
-    // actions that should never be silently dropped by a mash bucket.
-    const effective = event.kind !== 'key' || this.tokens >= 1
-    if (event.kind === 'key' && effective) this.tokens -= 1
-
     let variety = 1
     if (event.kind === 'key') {
       this.recentKeys.push(event.token)
@@ -54,8 +46,7 @@ export class InputPipeline {
       // Playing many different keys -> multiplier climbs toward 1.6.
       variety = clamp(0.4 + (unique / VARIETY_WINDOW) * 1.6, 0.4, 1.6)
     }
-
-    return { event, variety, effective }
+    return { event, variety }
   }
 }
 
