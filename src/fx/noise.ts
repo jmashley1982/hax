@@ -14,7 +14,15 @@ export class NoiseField {
     this.rng = mulberry32(seed)
   }
 
-  /** Draw a fresh grain frame at low opacity into the given 2D context. */
+  /**
+   * Draw a fresh grain frame at low opacity into the given 2D context.
+   *
+   * The opacity is baked into each pixel's own alpha channel, not applied
+   * via `ctx.globalAlpha`. `putImageData()` ignores `globalAlpha` (and all
+   * other canvas compositing state) entirely -- it writes the raw pixel
+   * buffer directly. Setting `ctx.globalAlpha` here was a no-op; the grain
+   * was rendering fully opaque and blotting out everything beneath it.
+   */
   draw(ctx: CanvasRenderingContext2D, width: number, height: number, opacity: number): void {
     if (width <= 0 || height <= 0) return
     if (
@@ -25,18 +33,16 @@ export class NoiseField {
       this.imageData = ctx.createImageData(width, height)
     }
     const data = this.imageData.data
+    const alpha = Math.round(clamp01(opacity) * 255)
     // Coarse loop: fill in 2x2 blocks for a cheaper, grainier look and far
     // fewer RNG draws than one-per-pixel.
     for (let y = 0; y < height; y += 2) {
       for (let x = 0; x < width; x += 2) {
         const v = Math.floor(this.rng() * 255)
-        this.setBlock(data, width, height, x, y, v)
+        this.setBlock(data, width, height, x, y, v, alpha)
       }
     }
-    ctx.save()
-    ctx.globalAlpha = opacity
     ctx.putImageData(this.imageData, 0, 0)
-    ctx.restore()
   }
 
   private setBlock(
@@ -46,6 +52,7 @@ export class NoiseField {
     x: number,
     y: number,
     v: number,
+    alpha: number,
   ): void {
     for (let dy = 0; dy < 2; dy++) {
       for (let dx = 0; dx < 2; dx++) {
@@ -56,8 +63,12 @@ export class NoiseField {
         data[i] = v
         data[i + 1] = v
         data[i + 2] = v
-        data[i + 3] = 255
+        data[i + 3] = alpha
       }
     }
   }
+}
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
 }
