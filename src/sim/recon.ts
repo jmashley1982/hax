@@ -32,6 +32,8 @@ export interface ReconResult {
   pageUrl?: string
   /** Absolute stylesheet URLs from the real page (up to a few) -- referenced directly via <link> in the TARGET window so the site's real CSS renders. Loading a stylesheet this way needs no CORS headers (only reading its rules via JS does, which is what dominantBrandColor's separate fetch is for). */
   stylesheetUrls: string[]
+  /** Inline <style> blocks lifted from the real page. Many sites ship their critical/above-the-fold CSS inline in <head> rather than in an external file, and dropping it (as an earlier version did, by keeping only body.innerHTML) rendered those sites unstyled. */
+  inlineStyles: string[]
 }
 
 const CACHE_PREFIX = 'nullstack:recon:v1:'
@@ -106,6 +108,7 @@ export function reconTierZero(input: string): ReconResult {
     snapshotTextLength: 0,
     pageUrl: url?.toString(),
     stylesheetUrls: [],
+    inlineStyles: [],
   }
 }
 
@@ -284,6 +287,19 @@ async function enrichFromHtml(html: string, targetUrl: string, tierZero: ReconRe
   const snapshotHtml = sanitizeSnapshot(doc)
   const bodyText = doc.body?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
 
+  // Inline <style> blocks (usually critical/above-the-fold CSS in <head>).
+  // sanitizeSnapshot only returns body.innerHTML, so without lifting these
+  // out separately they'd be silently dropped and the page would render
+  // unstyled.
+  const inlineStyles: string[] = []
+  let inlineBudget = 200_000
+  for (const styleEl of Array.from(doc.querySelectorAll('style'))) {
+    const css = styleEl.textContent ?? ''
+    if (!css.trim() || css.length > inlineBudget) continue
+    inlineStyles.push(css)
+    inlineBudget -= css.length
+  }
+
   const facts: MissionFacts = {
     org: ogSiteName || tierZero.facts.org,
     domain: tierZero.facts.domain,
@@ -305,6 +321,7 @@ async function enrichFromHtml(html: string, targetUrl: string, tierZero: ReconRe
     snapshotTextLength: bodyText.length,
     pageUrl: targetUrl,
     stylesheetUrls,
+    inlineStyles,
   }
 }
 

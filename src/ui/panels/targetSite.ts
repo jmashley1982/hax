@@ -66,8 +66,13 @@ function buildWireframeDoc(recon: ReconResult): string {
 
 function buildLiveDoc(recon: ReconResult): string {
   const links = recon.stylesheetUrls.map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`).join('\n')
+  // Inline <style> blocks go after the external links, matching the order
+  // they'd have on the real page (critical CSS normally wins over the
+  // stylesheet it precedes only via specificity, not order, so this is the
+  // safe placement).
+  const inline = recon.inlineStyles.map((css) => `<style>${css.replace(/<\/style/gi, '<\\/style')}</style>`).join('\n')
   const base = recon.pageUrl ? `<base href="${escapeHtml(recon.pageUrl)}">` : ''
-  return `<!doctype html><html><head><meta charset="utf-8">${base}${links}</head><body>${recon.snapshotHtml ?? ''}</body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8">${base}${links}${inline}</head><body>${recon.snapshotHtml ?? ''}</body></html>`
 }
 
 export class TargetSitePanel {
@@ -75,6 +80,8 @@ export class TargetSitePanel {
   private wrapper: HTMLElement
   private iframe: HTMLIFrameElement
   private currentClass = 'corrupt-0'
+  /** Whether verifyLiveRender has already escalated to the force-visible pass for the current document. */
+  private forcedVisible = false
 
   constructor(manager: WindowManager) {
     this.win = manager.spawn(
@@ -99,6 +106,7 @@ export class TargetSitePanel {
       faviconUrl: '',
       snapshotTextLength: 0,
       stylesheetUrls: [],
+      inlineStyles: [],
       title: 'ESTABLISHING CONNECTION...',
     })
     body.appendChild(this.iframe)
@@ -110,6 +118,98 @@ export class TargetSitePanel {
     this.win.setTitle(`TARGET :: ${recon.facts.domain}`)
     const useLive = recon.live && recon.snapshotHtml && recon.snapshotTextLength >= WIREFRAME_THRESHOLD
     this.iframe.srcdoc = useLive ? buildLiveDoc(recon) : buildWireframeDoc(recon)
+    if (useLive) this.verifyLiveRender(recon)
+  }
+
+  /**
+   * Trust nothing about the live render -- measure it.
+   *
+   * Having HTML is not the same as rendering something a human can see. The
+   * common real-world case: a site's CSS hides its content by default
+   * (`opacity:0` / `visibility:hidden` / `display:none` on a wrapper) and a
+   * script adds a class to reveal it after hydration. Scripts are blocked
+   * here by design, so that reveal never happens and the window goes
+   * completely blank -- markup present, nothing visible. That is exactly the
+   * "showed something for a moment, then went blank" failure.
+   *
+   * Rather than enumerate every way a third-party page can fail to paint,
+   * this checks the only thing that actually matters (is there visible text
+   * with real layout?) and escalates:
+   *   1. as-is -- most sites are fine, don't touch them
+   *   2. force-visible pass -- defeat the hidden-until-JS patterns
+   *   3. wireframe -- guaranteed non-blank floor
+   */
+  private verifyLiveRender(recon: ReconResult): void {
+    const started = Date.now()
+    const check = (): void => {
+      const doc = this.iframe.contentDocument
+      // srcdoc + allow-same-origin keeps this readable from the parent; if
+      // that ever stops holding, fail safe to the wireframe rather than
+      // leaving a possibly-blank frame up.
+      if (!doc || !doc.body) {
+        if (Date.now() - started < 2500) {
+          setTimeout(check, 150)
+          return
+        }
+        this.iframe.srcdoc = buildWireframeDoc(recon)
+        return
+      }
+
+      if (this.hasVisibleContent(doc)) return
+
+      // Give late-loading external stylesheets a chance before judging it
+      // blank -- an unstyled-but-present page is a pass, not a failure.
+      if (Date.now() - started < 1200) {
+        setTimeout(check, 150)
+        return
+      }
+
+      if (!this.forcedVisible) {
+        this.forcedVisible = true
+        this.forceVisible(doc)
+        setTimeout(check, 200)
+        return
+      }
+
+      this.iframe.srcdoc = buildWireframeDoc(recon)
+    }
+    this.forcedVisible = false
+    setTimeout(check, 120)
+  }
+
+  private hasVisibleContent(doc: Document): boolean {
+    const text = (doc.body.innerText ?? '').replace(/\s+/g, ' ').trim()
+    return text.length >= 40 && doc.body.scrollHeight > 20
+  }
+
+  /**
+   * Strip the hidden-until-JS styling that would otherwise leave the frame
+   * blank. Deliberately only runs when the page already measured as blank,
+   * so sites that render correctly are never touched by it (a blanket
+   * override would wreck their layout and pop open every hidden menu and
+   * modal). Inline `!important` outranks any author stylesheet rule,
+   * including the site's own `!important`.
+   */
+  private forceVisible(doc: Document): void {
+    const view = doc.defaultView
+    if (!view) return
+    const nodes = Array.from(doc.body.querySelectorAll<HTMLElement>('*')).slice(0, 4000)
+    for (const el of [doc.body, ...nodes]) {
+      let cs: CSSStyleDeclaration
+      try {
+        cs = view.getComputedStyle(el)
+      } catch {
+        continue
+      }
+      if (cs.display === 'none') el.style.setProperty('display', 'revert', 'important')
+      if (cs.visibility === 'hidden' || cs.visibility === 'collapse') {
+        el.style.setProperty('visibility', 'visible', 'important')
+      }
+      if (Number.parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important')
+      // Reveal animations usually park content far off-screen until a class lands.
+      if (cs.transform && cs.transform !== 'none') el.style.setProperty('transform', 'none', 'important')
+      if (cs.clipPath && cs.clipPath !== 'none') el.style.setProperty('clip-path', 'none', 'important')
+    }
   }
 
   /** Corruption scales with depth -- clean at SURFACE, full tearing/defaced by PHYSICAL. This is the "we're inside their site" payoff (plan §15B). */
