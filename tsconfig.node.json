@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "useDefineForClassFields": true,
     "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022"],
+    "types": ["node"],
     "skipLibCheck": true,
-    "types": [],
 
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -13,16 +12,16 @@
     "moduleDetection": "force",
     "noEmit": true,
 
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "noUncheckedIndexedAccess": true
   },
-  "include": ["src"]
+  "include": ["scripts"]
 }

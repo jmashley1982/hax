@@ -74,8 +74,8 @@ export class Shell {
 
   private runBootSequence(): void {
     clock.start()
-    const lines = ['boot', 'boot', 'boot', 'boot', 'boot', 'boot']
-    for (const key of lines) {
+    const steps = ['bootInit', 'bootKernel', 'bootVolumes', 'bootRelay', 'bootEntropy', 'bootHandshake']
+    for (const key of steps) {
       store.emit('terminal:line', { text: this.content.line('flavor', key), tone: 'system', speed: 6 })
     }
     store.emit('terminal:line', { text: '', tone: 'dim', speed: 0 })
@@ -96,18 +96,50 @@ export class Shell {
     window.addEventListener('pointerdown', () => this.reactToInput())
   }
 
+  // Rotating pool of "burst" sources so sustained mashing escalates through
+  // different flavors of chatter instead of reading as one repeated tick.
+  // Phase 3 replaces this whole reactive-input path with the real
+  // scheduler-driven pipeline; this list of banks carries over into it.
+  private static readonly BURST_SOURCES: ReadonlyArray<readonly [string, string]> = [
+    ['netops', 'scanLine'],
+    ['kernel', 'dmesg'],
+    ['exploit', 'stage'],
+    ['crypto', 'decrypt'],
+    ['filesystem', 'dirEntry'],
+    ['physical', 'scada'],
+  ]
+
   private reactToInput(): void {
     this.inputCount += 1
 
-    // Every ~5th input, fire a short burst from a rotating source bank so
-    // sustained mashing escalates rather than reading as one repeated tick.
+    // Every ~5th input, fire a short burst from a rotating source bank.
     if (this.inputCount % 5 === 0) {
-      const [bank, key] =
-        this.inputCount % 10 === 0 ? (['kernel', 'dmesg'] as const) : (['netops', 'scanLine'] as const)
+      const source = Shell.BURST_SOURCES[Math.floor(this.inputCount / 5) % Shell.BURST_SOURCES.length]!
+      const [bank, key] = source
       const burstSize = 3 + (this.inputCount % 3)
       for (let i = 0; i < burstSize; i++) {
         store.emit('terminal:line', { text: this.content.line(bank, key), tone: 'dim', speed: 2 })
       }
+      return
+    }
+
+    // Occasionally surface a warning or handler aside instead of plain
+    // ambient chatter -- keeps the default (unfocused) mashing experience
+    // from settling into a single tone.
+    if (this.inputCount % 11 === 0) {
+      store.emit('terminal:line', {
+        text: this.content.line('warnings', 'idsAlert'),
+        tone: 'warning',
+        speed: 4,
+      })
+      return
+    }
+    if (this.inputCount % 17 === 0) {
+      store.emit('terminal:line', {
+        text: this.content.line('dialogue', 'handlerIdle'),
+        tone: 'system',
+        speed: 6,
+      })
       return
     }
 
