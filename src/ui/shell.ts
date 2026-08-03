@@ -30,6 +30,7 @@ import { BruteForcePanel } from './panels/bruteForce'
 import { TraceDefensePanel } from './panels/traceDefense'
 import { PANEL_LABELS } from './panels/registry'
 import { ThreatPanel } from './panels/threatPanel'
+import { TargetSitePanel } from './panels/targetSite'
 import { applyLayerPalette, brandLayerPalettes } from '@/themes/themes'
 import type { TaskPanel } from './panels/panel'
 
@@ -77,6 +78,7 @@ export class Shell {
    */
   private activePalettes: Record<LayerId, LayerPalette> | null = null
   private recon: ReconResult | null = null
+  private targetSite: TargetSitePanel | null = null
 
   constructor(root: HTMLElement, private state: GameState) {
     this.shellEl = document.createElement('div')
@@ -158,6 +160,8 @@ export class Shell {
    */
   private beginRealTarget(url: string): void {
     const tierZero = reconTierZero(url)
+    this.targetSite = new TargetSitePanel(this.windows)
+    this.targetSite.setDepth(this.layers.current.id)
     this.applyRecon(tierZero)
     reconLive(url, tierZero)
       .then((live) => {
@@ -173,6 +177,7 @@ export class Shell {
     this.target = recon.facts
     this.content.setFacts(recon.facts)
     this.renderStatusLeft()
+    this.targetSite?.update(recon)
 
     this.activePalettes = brandLayerPalettes(recon.brandColor)
     applyLayerPalette(this.activePalettes[this.layers.current.id] ?? this.layers.current.palette)
@@ -514,6 +519,9 @@ export class Shell {
     // A locked-in real target keeps its brand-derived palette throughout
     // the descent instead of reverting to the generic fictional one.
     applyLayerPalette(this.activePalettes?.[next.id] ?? next.palette)
+    // Corruption on the real TARGET window scales with the same depth --
+    // clean at SURFACE, tearing/glitched by PHYSICAL.
+    this.targetSite?.setDepth(next.id)
 
     // Announce what's newly available. An unlock nobody is told about may
     // as well not exist.
@@ -568,6 +576,7 @@ export class Shell {
       speed: 1,
     })
     this.objective.set(`SURVIVE ${this.target.org}'s incident response`)
+    this.targetSite?.showDefaced(this.target.org)
 
     const kinds: ThreatEvent['kind'][] = ['traceback', 'reverseShell', 'lockdown']
     const waveSize = kinds.length
@@ -634,6 +643,8 @@ export class Shell {
     // generic per-layer colors instead of carrying the old site's brand.
     this.activePalettes = null
     this.recon = null
+    this.targetSite?.close()
+    this.targetSite = null
     this.renderStatusLeft()
 
     this.layers.restart()

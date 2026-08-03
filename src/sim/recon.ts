@@ -26,8 +26,12 @@ export interface ReconResult {
   faviconUrl: string
   /** Sanitized body HTML for the TARGET window (populated only when live). */
   snapshotHtml?: string
-  /** Roughly how much real text the snapshot has -- drives the wireframe fallback in R7-B. */
+  /** Roughly how much real text the snapshot has -- below the TARGET window's threshold, it renders a wireframe instead (real for JS-only SPA shells that serve an almost-empty body). */
   snapshotTextLength: number
+  /** The actual resolved page URL -- becomes the TARGET window iframe's <base href> so relative asset/stylesheet paths in snapshotHtml resolve against the real site. */
+  pageUrl?: string
+  /** Absolute stylesheet URLs from the real page (up to a few) -- referenced directly via <link> in the TARGET window so the site's real CSS renders. Loading a stylesheet this way needs no CORS headers (only reading its rules via JS does, which is what dominantBrandColor's separate fetch is for). */
+  stylesheetUrls: string[]
 }
 
 const CACHE_PREFIX = 'nullstack:recon:v1:'
@@ -100,6 +104,8 @@ export function reconTierZero(input: string): ReconResult {
     brandColor: pseudoBrandColor(hostname),
     faviconUrl: url ? `${url.origin}/favicon.ico` : `https://${hostname}/favicon.ico`,
     snapshotTextLength: 0,
+    pageUrl: url?.toString(),
+    stylesheetUrls: [],
   }
 }
 
@@ -256,10 +262,19 @@ async function enrichFromHtml(html: string, targetUrl: string, tierZero: ReconRe
   let brandColor =
     doc.querySelector('meta[name="theme-color"]')?.getAttribute('content')?.trim() || tierZero.brandColor
 
-  const stylesheetHref = doc.querySelector('link[rel="stylesheet"]')?.getAttribute('href') ?? null
-  const stylesheetUrl = resolveUrl(stylesheetHref, targetUrl)
-  if (stylesheetUrl) {
-    const css = await fetchText(stylesheetUrl.toString(), 4000)
+  const stylesheetUrls = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'))
+    .map((el) => resolveUrl(el.getAttribute('href'), targetUrl))
+    .filter((u): u is URL => u !== null)
+    .slice(0, 4)
+    .map((u) => u.toString())
+
+  if (stylesheetUrls[0]) {
+    // Only fetched to sniff a dominant color (CSSOM reading needs the text
+    // in hand); the TARGET window itself references stylesheetUrls
+    // directly via <link>, which needs no CORS success at all -- browsers
+    // don't gate *applying* an external stylesheet visually, only
+    // programmatically reading its rules cross-origin.
+    const css = await fetchText(stylesheetUrls[0], 4000)
     if (css) {
       const dominant = dominantBrandColor(css)
       if (dominant) brandColor = dominant
@@ -288,6 +303,8 @@ async function enrichFromHtml(html: string, targetUrl: string, tierZero: ReconRe
     faviconUrl,
     snapshotHtml,
     snapshotTextLength: bodyText.length,
+    pageUrl: targetUrl,
+    stylesheetUrls,
   }
 }
 
