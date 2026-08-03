@@ -11,7 +11,7 @@ import { HeatSystem } from '@/sim/heat'
 import { awardScore } from '@/sim/score'
 import { LayerSystem } from '@/sim/layers'
 import { Director } from '@/sim/director'
-import { CounterHackDirector, type ThreatEvent } from '@/sim/counterHack'
+import { CounterHackDirector, type ThreatEvent, type ThreatKind, type ThreatWaveSpec } from '@/sim/counterHack'
 import { ProcessSpawnDirector } from '@/sim/processDirector'
 import { generateTarget } from '@/sim/target'
 import { reconTierZero, reconLive, type ReconResult } from '@/sim/recon'
@@ -71,6 +71,10 @@ export class Shell {
   private processSpawner: ProcessSpawnDirector
   private activeThreats: ThreatPanel[] = []
   private inFinale = false
+  /** A periodic counter-intrusion wave lost -- ejection sequence in progress. Separate from inFinale so the two can't collide (handleEjection/spawnThreatWave both check both flags). */
+  private ejecting = false
+  /** True for the duration of a periodic wave -- see renderObjective()'s guard. */
+  private waveActive = false
   private contractCount = 0
 
   /**
@@ -295,6 +299,13 @@ export class Shell {
   }
 
   private renderObjective(): void {
+    // A live counter-intrusion wave owns the objective bar ("COUNTER-
+    // INTRUSION -- REPEL ALL N") -- without this guard, an ordinary task
+    // panel completing *during* the wave (panels keep running; only the
+    // finale clears the board) calls this and instantly clobbers that
+    // message back to whatever panel is targeted, which defeats the
+    // "objective bar taken over" requirement almost as soon as it fires.
+    if (this.waveActive) return
     if (!this.targetPanel) {
       this.objective.set('scanning for targets...')
       return
@@ -449,9 +460,9 @@ export class Shell {
     }
     if (heatEvents.critical) this.onHeatCritical()
 
-    if (!this.inFinale) {
-      const threat = this.counterHack.tick(this.elapsedMs, this.state.heat, this.state.layer, this.activeThreats.length)
-      if (threat) this.spawnThreat(threat)
+    if (!this.inFinale && !this.ejecting) {
+      const wave = this.counterHack.tick(this.elapsedMs, this.state.heat, this.state.layer, this.activeThreats.length)
+      if (wave) this.spawnThreatWave(wave)
 
       // "Random windows that pop open, show some code running, then
       // close -- like we're triggering events behind the scenes." Purely
@@ -466,34 +477,139 @@ export class Shell {
 
   // -- Counter-hack: the other side pushing back --------------------------
 
-  private spawnThreat(event: ThreatEvent): void {
-    let panel: ThreatPanel
-    panel = new ThreatPanel(this.windows, event, this.target.org, (success) => this.onThreatResolved(panel, success))
-    this.activeThreats.push(panel)
+  /**
+   * Spawns `kinds.length` ThreatPanels at once, all sharing `timeoutMs`,
+   * and calls `onAllResolved` exactly once every one of them has either
+   * been cleared or expired. This is the one mechanism both the periodic
+   * counter-intrusion wave and the PHYSICAL finale run through -- they
+   * differ only in what they do with the outcome (spawnThreatWave ejects
+   * on any miss; handleFinale grades a tiered verdict and always
+   * continues).
+   */
+  private runThreatWave(
+    kinds: ThreatKind[],
+    hitsNeeded: number,
+    timeoutMs: number,
+    onAllResolved: (successes: number, total: number) => void,
+  ): void {
+    const total = kinds.length
+    let resolved = 0
+    let successes = 0
+    for (const kind of kinds) {
+      let panel: ThreatPanel
+      const event: ThreatEvent = { kind, hitsNeeded, timeoutMs }
+      panel = new ThreatPanel(this.windows, event, this.target.org, (success) => {
+        resolved += 1
+        if (success) successes += 1
+        this.activeThreats = this.activeThreats.filter((t) => t !== panel)
+        if (resolved === total) onAllResolved(successes, total)
+      })
+      this.activeThreats.push(panel)
+    }
   }
 
-  private onThreatResolved(panel: ThreatPanel, success: boolean): void {
-    this.activeThreats = this.activeThreats.filter((t) => t !== panel)
-    if (success) {
-      awardScore(this.state, 90)
-      this.heat.add(-15)
+  /**
+   * A periodic counter-intrusion wave. Unlike a lone threat, this is a
+   * real fail state: "you have to break their attempt or they kick you
+   * out and you have to start over" (the user's words) means missing even
+   * one window in the wave ejects, not just a heat bump.
+   */
+  private spawnThreatWave(wave: ThreatWaveSpec): void {
+    this.shellEl.classList.add('is-counter-intrusion')
+    this.waveActive = true
+    this.objective.set(`COUNTER-INTRUSION -- REPEL ALL ${wave.kinds.length}`)
+
+    this.runThreatWave(wave.kinds, wave.hitsNeeded, wave.timeoutMs, (successes, total) => {
+      this.shellEl.classList.remove('is-counter-intrusion')
+      this.waveActive = false
+      if (successes === total) {
+        awardScore(this.state, 90 * total)
+        this.heat.add(-15)
+        store.emit('terminal:line', {
+          text: `>> ${this.target.org} security response neutralized`,
+          tone: 'success',
+          speed: 2,
+        })
+        this.refreshTarget()
+        this.renderObjective()
+      } else {
+        this.handleEjection()
+      }
+    })
+  }
+
+  /**
+   * The fail state: a counter-intrusion wave got through. Not fatal --
+   * score and target identity survive -- but real: the board is wiped and
+   * the descent restarts from SURFACE on the same target, same as §13a's
+   * "rewarding, not hard" rule for task panels never extended to this
+   * system on purpose (the user explicitly asked for a real consequence
+   * here).
+   */
+  private handleEjection(): void {
+    if (this.inFinale || this.ejecting) return
+    this.ejecting = true
+
+    this.director.clearAll()
+    this.setTarget(null)
+    for (const t of this.activeThreats) t.win.close()
+    this.activeThreats = []
+
+    this.shellEl.classList.add('is-ejecting')
+    setTimeout(() => this.shellEl.classList.remove('is-ejecting'), 500)
+    this.targetSite?.flashDisconnected()
+
+    store.emit('terminal:line', {
+      text: `==== CONNECTION LOST :: ${this.target.org} COUNTERMEASURES SUCCESSFUL ====`,
+      tone: 'danger',
+      speed: 1,
+    })
+    store.emit('terminal:line', {
+      text: '>> session dropped -- falling back to the last stable point',
+      tone: 'danger',
+      speed: 2,
+    })
+    this.objective.set('CONNECTION LOST -- reconnecting...')
+    this.showEjectionBanner()
+
+    setTimeout(() => {
+      this.layers.restart()
+      this.heat.resetAfterCountermeasure(20)
+      applyLayerPalette(this.activePalettes?.[this.layers.current.id] ?? this.layers.current.palette)
+      this.targetSite?.setDepth(this.layers.current.id)
+      if (this.recon) this.targetSite?.update(this.recon)
+
       store.emit('terminal:line', {
-        text: `>> ${this.target.org} security response neutralized`,
-        tone: 'success',
+        text: `>> reconnected :: ${this.target.org} (${this.target.domain}) -- back to SURFACE`,
+        tone: 'system',
         speed: 2,
       })
-    } else {
-      // A real, named setback -- not fatal, but it should sting. The
-      // existing heat-critical cascade (spawnWarningDialog + reset) fires
-      // naturally if this pushes heat over the threshold, which is exactly
-      // the "reverse hack got through" moment the brief asked for.
-      this.heat.add(28)
-      store.emit('terminal:line', {
-        text: `>> CONNECTION FLAGGED -- ${this.target.org} is watching this session closer now`,
-        tone: 'danger',
-        speed: 2,
-      })
-    }
+      this.objective.set(`${this.layers.current.title}: ${this.layers.current.modifierText}`)
+      for (let i = 0; i < this.layers.current.panelFloor; i++) this.director.spawn()
+      this.refreshTarget()
+      this.ejecting = false
+    }, 2200)
+  }
+
+  private showEjectionBanner(): void {
+    const el = document.createElement('div')
+    el.className = 'ending-banner ejection-banner'
+
+    const title = document.createElement('div')
+    title.className = 'ending-banner__title'
+    title.textContent = 'EJECTED'
+
+    const sub = document.createElement('div')
+    sub.className = 'ending-banner__sub'
+    sub.textContent = `${this.target.org} -- countermeasures won this round`
+
+    const score = document.createElement('div')
+    score.className = 'ending-banner__score'
+    score.textContent = `SCORE PRESERVED :: ${Math.floor(this.state.score)}`
+
+    el.append(title, sub, score)
+    this.shellEl.appendChild(el)
+    setTimeout(() => el.remove(), 2000)
   }
 
   private onHeatCritical(): void {
@@ -591,22 +707,8 @@ export class Shell {
     this.objective.set(`SURVIVE ${this.target.org}'s incident response`)
     this.targetSite?.showDefaced(this.target.org)
 
-    const kinds: ThreatEvent['kind'][] = ['traceback', 'reverseShell', 'lockdown']
-    const waveSize = kinds.length
-    let resolved = 0
-    let successes = 0
-
-    for (const kind of kinds) {
-      let panel: ThreatPanel
-      const event: ThreatEvent = { kind, hitsNeeded: 7, timeoutMs: 12000 }
-      panel = new ThreatPanel(this.windows, event, this.target.org, (success) => {
-        resolved += 1
-        if (success) successes += 1
-        this.activeThreats = this.activeThreats.filter((t) => t !== panel)
-        if (resolved === waveSize) this.finishFinale(successes, waveSize)
-      })
-      this.activeThreats.push(panel)
-    }
+    const kinds: ThreatKind[] = ['traceback', 'reverseShell', 'lockdown']
+    this.runThreatWave(kinds, 7, 12000, (successes, total) => this.finishFinale(successes, total))
   }
 
   private finishFinale(successes: number, total: number): void {

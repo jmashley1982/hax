@@ -176,6 +176,17 @@
   color: var(--fg-dim);
 }
 
+/* A lost counter-intrusion wave reuses .ending-banner's layout/timing but
+   reads as a setback, not a reward -- red instead of the layer's glow. */
+.ejection-banner .ending-banner__title {
+  color: var(--danger);
+  text-shadow: 0 0 18px var(--danger);
+}
+
+.ejection-banner .ending-banner__sub {
+  color: var(--danger);
+}
+
 /* ---- START OVERLAY (real-target URL entry) ---- */
 
 .start-overlay {

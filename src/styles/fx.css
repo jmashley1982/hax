@@ -91,3 +91,67 @@
     animation: none;
   }
 }
+
+/* Ejection moment: a lost counter-intrusion wave. Same shake-and-flash
+   language as a breakthrough, but red and a beat longer -- this is a real
+   setback, not a reward, and should read as one at a glance. */
+.shell.is-ejecting {
+  animation: breach-shake 480ms ease-in-out;
+}
+
+.shell.is-ejecting::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: var(--danger);
+  opacity: 0;
+  pointer-events: none;
+  animation: eject-flash 480ms ease-out;
+}
+
+@keyframes eject-flash {
+  0% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-ejecting,
+  .shell.is-ejecting::after {
+    animation: none;
+  }
+}
+
+/* Counter-intrusion active: a persistent red vignette pulse behind
+   everything else while a wave is live, so the danger reads at a glance
+   even from panels the player isn't currently looking at. */
+.shell.is-counter-intrusion::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 700;
+  pointer-events: none;
+  box-shadow: inset 0 0 min(14vw, 180px) 10px rgba(255, 59, 59, 0.45);
+  animation: counter-intrusion-pulse 900ms ease-in-out infinite;
+}
+
+@keyframes counter-intrusion-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-counter-intrusion::before {
+    animation: none;
+    opacity: 0.7;
+  }
+}

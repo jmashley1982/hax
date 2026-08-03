@@ -125,6 +125,18 @@ export class TargetSitePanel {
     this.win.setTitle(`TARGET :: ${orgName} -- DEFACED`)
   }
 
+  /**
+   * A briefer, self-clearing version of showDefaced() for a lost
+   * counter-intrusion wave (shell.ts's handleEjection) -- the connection
+   * drops and the run falls back to SURFACE on the SAME target, so unlike
+   * the finale's permanent defacement this must reset itself once the
+   * board recovers (shell.ts calls update()/setDepth() again right after).
+   */
+  flashDisconnected(): void {
+    this.wrapper.classList.add('is-disconnected')
+    setTimeout(() => this.wrapper.classList.remove('is-disconnected'), 2200)
+  }
+
   close(): void {
     this.win.close()
   }
