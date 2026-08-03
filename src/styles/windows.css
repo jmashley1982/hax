@@ -1,0 +1,160 @@
+.win-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 600;
+  pointer-events: none;
+}
+
+.win-layer > * {
+  pointer-events: auto;
+}
+
+.win-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  /* Must stay below every .win's z-index (manager.ts starts those at 11
+     and counts up) so a modal's own buttons stay clickable -- this was
+     briefly 700, which put the backdrop ABOVE every window and made every
+     modal in the app unusable. Caught by an automated click failing with
+     "backdrop intercepts pointer events". */
+  z-index: 1;
+  opacity: 0;
+  animation: win-backdrop-in 150ms ease-out forwards;
+}
+
+@keyframes win-backdrop-in {
+  to {
+    opacity: 1;
+  }
+}
+
+.win {
+  position: absolute;
+  min-width: 260px;
+  max-width: min(90vw, 480px);
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(0, 0, 0, 0.35);
+  color: var(--fg);
+  font-size: 13px;
+  animation: win-in 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  transform-origin: top left;
+}
+
+.win.is-closing {
+  animation: win-out 160ms ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes win-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes win-out {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+.win--danger {
+  border-color: var(--danger);
+  box-shadow: 0 0 24px rgba(255, 59, 59, 0.35), inset 0 0 40px rgba(0, 0, 0, 0.35);
+}
+
+.win__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--panel-edge);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  cursor: move;
+  user-select: none;
+}
+
+.win__title-text {
+  color: var(--fg-bright);
+}
+
+.win__close {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+.win__close:hover {
+  color: var(--danger);
+}
+
+.win__body {
+  padding: 0.75rem 0.85rem;
+  line-height: 1.5;
+}
+
+.win__body p {
+  margin: 0 0 0.6rem;
+}
+
+.win__row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.win__input {
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--fg-bright);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0.4rem 0.5rem;
+  outline: none;
+}
+.win__input:focus {
+  border-color: var(--fg);
+}
+
+.win__btn {
+  background: transparent;
+  border: 1px solid var(--panel-edge);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  text-align: left;
+  flex: 1 1 auto;
+}
+.win__btn:hover {
+  border-color: var(--fg);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.win__countdown {
+  margin-top: 0.5rem;
+  height: 4px;
+  background: var(--panel-edge);
+  overflow: hidden;
+}
+.win__countdown-bar {
+  height: 100%;
+  background: var(--danger);
+  width: 100%;
+  transform-origin: left;
+}

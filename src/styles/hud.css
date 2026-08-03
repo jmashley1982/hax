@@ -1,0 +1,70 @@
+.hud {
+  position: absolute;
+  top: 0.9rem;
+  right: 1.2rem;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  pointer-events: none;
+  text-align: right;
+}
+
+.hud__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hud__label {
+  color: var(--fg-dim);
+}
+
+.hud__value {
+  color: var(--fg-bright);
+  min-width: 3.5em;
+  text-align: right;
+}
+
+.hud__score {
+  font-size: 15px;
+  color: var(--fg-bright);
+  text-shadow: 0 0 calc(var(--glow-strength) * 8px) var(--glow);
+}
+
+.hud__heatbar {
+  width: 120px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-edge);
+  overflow: hidden;
+}
+
+.hud__heatbar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--ok);
+  transition: width 200ms linear, background-color 400ms ease;
+}
+
+.hud__heatbar-fill.is-warn {
+  background: var(--warn);
+}
+.hud__heatbar-fill.is-critical {
+  background: var(--danger);
+  animation: hud-pulse 500ms ease-in-out infinite;
+}
+
+@keyframes hud-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
