@@ -1,0 +1,57 @@
+name: Deploy to GitHub Pages
+
+# Builds the static site and publishes it via GitHub Pages. Triggers on
+# push to this branch (which is currently the repository's only/default
+# branch -- update the `branches` list below if you later merge this work
+# into `main` and want deploys to follow that instead), plus a manual
+# trigger for re-deploying without a new commit.
+on:
+  push:
+    branches:
+      - claude/elite-hacker-website-cmkh77
+  workflow_dispatch:
+
+# Least-privilege token scope for the Pages deployment API.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deploy in flight at a time; a newer push supersedes an
+# in-progress one rather than queuing behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      # The whole app is one self-contained dist/index.html (vite-plugin-
+      # singlefile) plus a favicon -- see vite.config.ts's header comment
+      # for why nothing is split out. Uploading dist/ as-is is correct.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
