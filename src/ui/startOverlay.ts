@@ -23,6 +23,8 @@ const HARD_CAP_MS = 20_000
 export interface StartOverlayOptions {
   onSubmit: (url: string) => void
   onSkip: () => void
+  /** Overrides the heading -- lets a post-breach re-prompt read as a new contract. */
+  title?: string
 }
 
 export class StartOverlay {
@@ -40,7 +42,7 @@ export class StartOverlay {
 
     const title = document.createElement('div')
     title.className = 'start-overlay__title'
-    title.textContent = 'SELECT TARGET'
+    title.textContent = opts.title ?? 'SELECT TARGET'
 
     const sub = document.createElement('p')
     sub.className = 'start-overlay__sub'

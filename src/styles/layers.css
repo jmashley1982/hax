@@ -1,0 +1,246 @@
+/* ============================================================
+   PER-LAYER SKINS
+
+   Colour alone was carrying the whole "you are somewhere deeper" job, and
+   once the novelty of a new hue wore off every layer played and read the
+   same. These rules key off <html data-layer> (themes.ts's applyLayerSkin)
+   and change the *structure* of the interface with depth: window chrome,
+   border weight, corner ornaments, background texture, type density, and
+   how much the CRT grain bites.
+
+   The through-line is a descent from a clean modern console at the surface
+   toward raw machine at the bottom -- panels get more instrumented, more
+   ornamented, and more distressed the closer you get to the source.
+   ============================================================ */
+
+/* The board's backdrop texture. Each layer swaps the pattern, which is the
+   single biggest "different place" cue after color. */
+.shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  transition: opacity 600ms ease, background-color 600ms ease;
+}
+
+/* ---- SURFACE: open, clean, nothing in your way ---- */
+
+[data-layer='surface'] .shell::before {
+  background-image: linear-gradient(var(--panel-edge) 1px, transparent 1px),
+    linear-gradient(90deg, var(--panel-edge) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.12;
+}
+
+/* ---- PERIMETER: hardened edge -- doubled borders, corner ticks ---- */
+
+[data-layer='perimeter'] .shell::before {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--panel-edge) 0 1px,
+    transparent 1px 40px
+  );
+  opacity: 0.18;
+}
+
+[data-layer='perimeter'] .win {
+  border-width: 2px;
+  border-style: double;
+}
+
+[data-layer='perimeter'] .win__title::before {
+  content: '▚ ';
+  opacity: 0.6;
+}
+
+/* ---- INTRANET: inside the building -- filing-cabinet chrome ---- */
+
+[data-layer='intranet'] .shell::before {
+  background-image: repeating-linear-gradient(0deg, var(--panel-edge) 0 1px, transparent 1px 26px);
+  opacity: 0.16;
+}
+
+[data-layer='intranet'] .win__title {
+  border-bottom: 1px dashed var(--panel-edge);
+  font-style: italic;
+}
+
+[data-layer='intranet'] .win__title::before {
+  content: '▤ ';
+  opacity: 0.7;
+}
+
+[data-layer='intranet'] .panel__body {
+  border-left: 2px solid var(--panel-edge);
+  padding-left: 0.5rem;
+}
+
+/* ---- CORE: deep and wrong -- bracketed, hazard-striped, glowing ---- */
+
+[data-layer='core'] .shell::before {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--panel-edge) 0 1px,
+    transparent 1px 22px
+  );
+  opacity: 0.2;
+}
+
+[data-layer='core'] .win {
+  box-shadow: 0 0 22px -6px var(--glow), inset 0 0 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Corner brackets -- the panel looks clamped into place. */
+[data-layer='core'] .panel::before,
+[data-layer='core'] .panel::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--fg);
+  border-style: solid;
+  pointer-events: none;
+  z-index: 3;
+}
+
+[data-layer='core'] .panel::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+}
+
+[data-layer='core'] .panel::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+}
+
+[data-layer='core'] .win__title {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 6px,
+    rgba(255, 255, 255, 0.05) 6px 12px
+  );
+}
+
+/* ---- KERNEL: raw machine -- stark, instrumented, address gutters ---- */
+
+[data-layer='kernel'] .shell::before {
+  background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
+  opacity: 0.5;
+}
+
+[data-layer='kernel'] .win {
+  border-width: 1px;
+  border-radius: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9), 0 0 30px -10px var(--glow);
+}
+
+/* Inverted title bar -- reads as a system/monitor window, not an app.
+   Written at `:root[...]` specificity so it also beats
+   `.panel.is-targeted .win__title` in panels.css; otherwise the targeted
+   panel keeps a translucent bar while every other one is inverted, and the
+   inversion looks like a rendering fault rather than a style. Targeting
+   stays legible via the border/glow `.panel.is-targeted` puts on the
+   window itself. */
+:root[data-layer='kernel'] .win__title {
+  background: var(--fg);
+  color: var(--bg-deep);
+  letter-spacing: 0.16em;
+  text-shadow: none;
+}
+
+/* The title's text lives in a child that sets its own `--fg-bright`
+   colour, so inverting only the bar left near-white text on a near-white
+   background -- the panel titles were effectively invisible at this depth. */
+:root[data-layer='kernel'] .win__title-text,
+:root[data-layer='kernel'] .win__close {
+  color: var(--bg-deep);
+  text-shadow: none;
+}
+
+:root[data-layer='kernel'] .win__title::before {
+  content: '0x';
+  opacity: 0.55;
+}
+
+[data-layer='kernel'] .panel__body {
+  letter-spacing: 0.04em;
+}
+
+/* ---- PHYSICAL: real-world control -- industrial, alarmed ---- */
+
+[data-layer='physical'] .shell::before {
+  background-image: repeating-linear-gradient(
+      135deg,
+      rgba(255, 74, 61, 0.16) 0 12px,
+      transparent 12px 34px
+    ),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 4px);
+  opacity: 0.55;
+}
+
+[data-layer='physical'] .win {
+  border-width: 2px;
+  box-shadow: 0 0 26px -4px var(--danger), inset 0 0 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Hazard tape across every window header. */
+[data-layer='physical'] .win__title {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 74, 61, 0.28) 0 8px,
+    transparent 8px 16px
+  );
+  border-bottom: 2px solid var(--danger);
+}
+
+[data-layer='physical'] .win__title::before {
+  content: '⚠ ';
+}
+
+[data-layer='physical'] .panel__rail {
+  border-color: var(--danger);
+}
+
+/* The grain bites harder the deeper you are -- the picture itself degrades
+   as you approach the source.
+   These MUST be written as `:root[data-layer=...]`, not `[data-layer=...]`.
+   base.css declares the defaults on `:root[data-theme='phosphor']`, which
+   outweighs a bare attribute selector -- so the plain form lost every time
+   and the grain stayed flat at every depth. Matching that specificity lets
+   source order (layers.css is imported after base.css) decide. */
+:root[data-layer='perimeter'] {
+  --scanline-opacity: 0.14;
+}
+:root[data-layer='intranet'] {
+  --scanline-opacity: 0.16;
+}
+:root[data-layer='core'] {
+  --scanline-opacity: 0.2;
+  --glow-strength: 0.95;
+}
+:root[data-layer='kernel'] {
+  --scanline-opacity: 0.26;
+  --glow-strength: 1.1;
+}
+:root[data-layer='physical'] {
+  --scanline-opacity: 0.34;
+  --glow-strength: 1.25;
+}
+
+/* Mobile: the ornaments that eat horizontal room are dropped, but the
+   background texture and chrome treatments -- which carry the "different
+   place" read -- all stay. */
+[data-layout='mobile'] [data-layer='intranet'] .panel__body {
+  border-left: none;
+  padding-left: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell::before {
+    transition: none;
+  }
+}

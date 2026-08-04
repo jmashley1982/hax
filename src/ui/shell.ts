@@ -1,7 +1,7 @@
 import { store } from '@/core/store'
 import { clock } from '@/core/clock'
 import { mulberry32, type Rng } from '@/core/rng'
-import { saveState, type GameState } from '@/core/state'
+import { saveState, LAYER_ORDER, type GameState } from '@/core/state'
 import type { InteractionMode } from '@/core/events'
 import { InputPipeline } from '@/core/input'
 import { MODE_PROFILES, computeProgress } from '@/core/progress'
@@ -12,13 +12,15 @@ import { awardScore } from '@/sim/score'
 import { LayerSystem } from '@/sim/layers'
 import { Director } from '@/sim/director'
 import { CounterHackDirector, type ThreatEvent, type ThreatKind, type ThreatWaveSpec } from '@/sim/counterHack'
-import { ProcessSpawnDirector } from '@/sim/processDirector'
+import { ProcessSpawnDirector, burstSize } from '@/sim/processDirector'
+import { LockoutDirector } from '@/sim/lockoutDirector'
+import { LockoutOverlay } from './lockout'
 import { generateTarget } from '@/sim/target'
 import { reconTierZero, reconLive, type ReconResult } from '@/sim/recon'
 import { ContentEngine } from '@/content'
 import type { MissionFacts } from '@/content/grammar'
 import type { LayerId } from '@/core/state'
-import type { LayerPalette } from '@/sim/layers'
+import type { LayerDef, LayerPalette } from '@/sim/layers'
 import { CrtOverlay } from '@/fx/crt'
 import { Terminal } from './terminal'
 import { Prompt } from './prompt'
@@ -35,7 +37,7 @@ import { TraceDefensePanel } from './panels/traceDefense'
 import { PANEL_LABELS } from './panels/registry'
 import { ThreatPanel } from './panels/threatPanel'
 import { TargetSitePanel } from './panels/targetSite'
-import { applyLayerPalette, brandLayerPalettes } from '@/themes/themes'
+import { applyLayerPalette, applyLayerSkin, brandLayerPalettes } from '@/themes/themes'
 import type { TaskPanel } from './panels/panel'
 
 const MODE_CYCLE: readonly InteractionMode[] = ['hybrid', 'chaos', 'intent']
@@ -71,6 +73,9 @@ export class Shell {
   private target: MissionFacts
   private counterHack: CounterHackDirector
   private processSpawner: ProcessSpawnDirector
+  private lockoutDirector: LockoutDirector
+  /** Non-null while the terminal is down. Gates all input and all spawning. */
+  private lockout: LockoutOverlay | null = null
   private activeThreats: ThreatPanel[] = []
   private inFinale = false
   /** A periodic counter-intrusion wave lost -- ejection sequence in progress. Separate from inFinale so the two can't collide (handleEjection/spawnThreatWave both check both flags). */
@@ -99,6 +104,7 @@ export class Shell {
     this.content = new ContentEngine(state.seed, this.target)
     this.counterHack = new CounterHackDirector(mulberry32(state.seed + 4))
     this.processSpawner = new ProcessSpawnDirector(mulberry32(state.seed + 6))
+    this.lockoutDirector = new LockoutDirector(mulberry32(state.seed + 7))
 
     this.heat = new HeatSystem(state)
     this.layers = new LayerSystem(state)
@@ -155,10 +161,20 @@ export class Shell {
 
     // The URL prompt appears OVER the already-running board, never gating
     // it -- see ui/startOverlay.ts's header comment for why that matters.
+    this.promptForTarget()
+  }
+
+  /**
+   * Ask what to hack next. Used for the opening run and again after every
+   * completed breach, so finishing a contract loops back to a real choice
+   * of target instead of silently rolling into another random one.
+   */
+  private promptForTarget(isNewContract = false): void {
     new StartOverlay(this.shellEl, {
+      title: isNewContract ? 'CONTRACT COMPLETE -- SELECT NEXT TARGET' : 'SELECT TARGET',
       onSubmit: (url) => this.beginRealTarget(url),
       onSkip: () => {
-        /* keep the fictional target already generated in the constructor */
+        /* keep the fictional target already generated for this contract */
       },
     })
   }
@@ -195,6 +211,7 @@ export class Shell {
 
     this.activePalettes = brandLayerPalettes(recon.brandColor)
     applyLayerPalette(this.activePalettes[this.layers.current.id] ?? this.layers.current.palette)
+    applyLayerSkin(this.layers.current.id)
 
     store.emit('terminal:line', {
       text: recon.live
@@ -403,6 +420,10 @@ export class Shell {
    * specific, visible destination instead of an invisible counter.
    */
   private handleKey(char: string): void {
+    // The lockout overlay owns every keystroke while it's up -- it binds
+    // its own capture-phase listener, and letting input also reach the
+    // board behind it would advance panels the player can't even see.
+    if (this.lockout) return
     this.inputPipeline.push({ kind: 'key', token: char })
 
     const profile = MODE_PROFILES[this.state.mode]
@@ -525,6 +546,12 @@ export class Shell {
   private onTick(dt: number): void {
     this.elapsedMs += dt
 
+    // While the terminal is down the whole simulation is frozen: no panel
+    // decay, no heat, no threats, no spawns. The player's machine is off
+    // -- nothing should advance behind the reboot screen, least of all a
+    // timer that could eject them for a wave they physically cannot see.
+    if (this.lockout) return
+
     this.director.tick(dt)
     for (const panel of this.director.activePanels) {
       if (panel instanceof BruteForcePanel) panel.tickDecay(dt)
@@ -542,6 +569,20 @@ export class Shell {
     }
     if (heatEvents.critical) this.onHeatCritical()
 
+    // The target pulling the plug on the player's own terminal. Checked
+    // before the counter-hack so the two can never fire on the same tick.
+    if (
+      this.lockoutDirector.tick(
+        this.elapsedMs,
+        this.state.heat,
+        this.state.layer,
+        this.inFinale || this.ejecting || this.waveActive || this.activeThreats.length > 0,
+      )
+    ) {
+      this.beginLockout()
+      return
+    }
+
     if (!this.inFinale && !this.ejecting) {
       const wave = this.counterHack.tick(this.elapsedMs, this.state.heat, this.state.layer, this.activeThreats.length)
       if (wave) this.spawnThreatWave(wave)
@@ -552,9 +593,78 @@ export class Shell {
       // input-routing list, so it can never steal a keystroke from an
       // actual task panel.
       if (this.processSpawner.tick(this.elapsedMs, this.state.layer, this.layers.tension)) {
-        spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
+        // Deep layers open two or three at once -- that burst is what makes
+        // the background read as constant churn rather than the occasional
+        // window.
+        const n = burstSize(this.state.layer, this.rng)
+        for (let i = 0; i < n; i++) {
+          spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
+        }
       }
     }
+  }
+
+  // -- Lockout: they kill YOUR terminal ----------------------------------
+
+  /**
+   * Every other setback in this game happens to the connection. This one
+   * happens to the player's own machine -- the screen dies and they have
+   * to walk the rig back up through a boot ceremony before they can keep
+   * working.
+   *
+   * Deliberately NOT a progress loss: the cost is the interruption and
+   * having your board swept, not points or depth. Stacking a hard penalty
+   * on top of a 15-second forced ceremony would make the most dramatic
+   * moment in the game the one players least want to see.
+   */
+  private beginLockout(): void {
+    if (this.lockout) return
+
+    store.emit('terminal:line', {
+      text: `!!!! ${this.target.org} PUSHED A KILL COMMAND -- TERMINAL DOWN !!!!`,
+      tone: 'danger',
+      speed: 0,
+    })
+
+    // Sweep everything: the machine is off, nothing survives the reboot.
+    this.director.clearAll()
+    this.setTarget(null)
+    for (const t of this.activeThreats) t.win.close()
+    this.activeThreats = []
+    this.waveActive = false
+    this.shellEl.classList.remove('is-counter-intrusion')
+    this.windows.closeTransient()
+
+    this.lockout = new LockoutOverlay(this.shellEl, {
+      org: this.target.org,
+      rng: this.rng,
+      onComplete: () => this.endLockout(),
+    })
+  }
+
+  private endLockout(): void {
+    this.lockout = null
+    // lastFiredAt was already stamped when it fired; this only spaces out
+    // the next check so a reboot isn't immediately followed by another.
+    this.lockoutDirector.rearm(this.elapsedMs, 30_000)
+    // Coming back up should feel like relief, not straight back into the
+    // fire -- cool the heat that got them locked out in the first place.
+    this.heat.resetAfterCountermeasure(5)
+    this.breakthroughGraceUntil = this.elapsedMs + BREAKTHROUGH_GRACE_MS
+    // A wave that came due while the machine was dead must not fire the
+    // instant the player finishes rebooting.
+    this.counterHack.defer(this.elapsedMs, 12_000)
+    this.processSpawner.defer(this.elapsedMs, 3_000)
+
+    store.emit('terminal:line', {
+      text: `>> TERMINAL RESTORED -- re-entering ${this.target.org} at ${this.layers.current.title}`,
+      tone: 'success',
+      speed: 2,
+    })
+    this.objective.set(`${this.layers.current.title}: ${this.layers.current.modifierText}`)
+
+    for (let i = 0; i < this.layers.current.panelFloor; i++) this.director.spawn()
+    this.refreshTarget()
   }
 
   // -- Counter-hack: the other side pushing back --------------------------
@@ -662,6 +772,7 @@ export class Shell {
       this.layers.restart()
       this.heat.resetAfterCountermeasure(20)
       applyLayerPalette(this.activePalettes?.[this.layers.current.id] ?? this.layers.current.palette)
+      applyLayerSkin(this.layers.current.id)
       this.targetSite?.setDepth(this.layers.current.id)
       if (this.recon) this.targetSite?.update(this.recon)
 
@@ -718,7 +829,12 @@ export class Shell {
       speed: 1,
     })
 
-    awardScore(this.state, 250)
+    // Depth-scaled, so pushing deeper is worth visibly more than grinding
+    // the shallow layers -- a flat bonus made the sixth breakthrough feel
+    // no better earned than the first.
+    const depthIndex = LAYER_ORDER.indexOf(cleared.id) + 1
+    const bonus = 250 * depthIndex
+    awardScore(this.state, bonus)
     this.heat.add(-30)
 
     // Sweep the board, then reopen at the new depth -- the visible
@@ -727,6 +843,7 @@ export class Shell {
     this.setTarget(null)
 
     const next = this.layers.breakthrough()
+    this.showBreakthroughCard(next, depthIndex, bonus)
     this.breakthroughGraceUntil = this.elapsedMs + BREAKTHROUGH_GRACE_MS
 
     // Repaint the whole UI for the new depth -- this is what makes each
@@ -734,6 +851,7 @@ export class Shell {
     // A locked-in real target keeps its brand-derived palette throughout
     // the descent instead of reverting to the generic fictional one.
     applyLayerPalette(this.activePalettes?.[next.id] ?? next.palette)
+    applyLayerSkin(next.id)
     // Corruption on the real TARGET window scales with the same depth --
     // clean at SURFACE, tearing/glitched by PHYSICAL.
     this.targetSite?.setDepth(next.id)
@@ -759,6 +877,48 @@ export class Shell {
       for (let i = 0; i < next.panelFloor; i++) this.director.spawn()
       this.refreshTarget()
     }, 1200)
+  }
+
+  /**
+   * The reward moment for clearing a layer.
+   *
+   * A terminal line and a color change were doing all the work, and both
+   * scroll past in a second -- "no sense of progression." This is a
+   * deliberate beat: the screen states how deep you now are, what it cost
+   * them, and what you just unlocked, and holds it long enough to land.
+   */
+  private showBreakthroughCard(next: LayerDef, depthIndex: number, bonus: number): void {
+    const el = document.createElement('div')
+    el.className = 'breakthrough-card'
+
+    const depth = document.createElement('div')
+    depth.className = 'breakthrough-card__depth'
+    depth.textContent = `DEPTH ${depthIndex + 1} / ${LAYER_ORDER.length}`
+
+    const title = document.createElement('div')
+    title.className = 'breakthrough-card__title'
+    title.textContent = next.title
+
+    const pips = document.createElement('div')
+    pips.className = 'breakthrough-card__pips'
+    for (let i = 0; i < LAYER_ORDER.length; i++) {
+      const pip = document.createElement('span')
+      pip.className = `breakthrough-card__pip${i <= depthIndex ? ' is-lit' : ''}`
+      pips.appendChild(pip)
+    }
+
+    const unlock = document.createElement('div')
+    unlock.className = 'breakthrough-card__unlock'
+    const tools = next.unlocks.map((id) => PANEL_LABELS[id] ?? id).join(', ')
+    unlock.textContent = tools ? `NEW TOOL UNLOCKED -- ${tools}` : next.modifierText.toUpperCase()
+
+    const score = document.createElement('div')
+    score.className = 'breakthrough-card__score'
+    score.textContent = `+${bonus}`
+
+    el.append(depth, title, pips, unlock, score)
+    this.shellEl.appendChild(el)
+    setTimeout(() => el.remove(), 2400)
   }
 
   // -- Finale: PHYSICAL's threshold is a climax, not a wall -------------
@@ -852,6 +1012,7 @@ export class Shell {
     this.heat.resetAfterCountermeasure(10)
     this.inFinale = false
     applyLayerPalette(this.layers.current.palette)
+    applyLayerSkin(this.layers.current.id)
 
     store.emit('terminal:line', {
       text: `>> NEW CONTRACT :: ${this.target.org} (${this.target.domain})`,
@@ -862,5 +1023,10 @@ export class Shell {
 
     for (let i = 0; i < this.layers.current.panelFloor; i++) this.director.spawn()
     this.refreshTarget()
+
+    // Finishing a breach earns the choice of what to hit next -- a new URL
+    // or another random org -- rather than being silently handed one.
+    this.lockoutDirector.rearm(this.elapsedMs, 15_000)
+    this.promptForTarget(true)
   }
 }

@@ -66,6 +66,18 @@ const KINDS: readonly ThreatKind[] = ['traceback', 'reverseShell', 'lockdown']
 export class CounterHackDirector {
   private nextCheckAt = 0
 
+  /**
+   * Push the next wave out by `ms`.
+   *
+   * Used after events that already put the player through the wringer --
+   * chiefly a lockout, where a wave that came due while the terminal was
+   * dead would otherwise fire the instant they finish rebooting, which
+   * reads as the game kicking someone who just got back up.
+   */
+  defer(elapsedMs: number, ms: number): void {
+    this.nextCheckAt = Math.max(this.nextCheckAt, elapsedMs + ms)
+  }
+
   constructor(private rng: Rng) {}
 
   /**

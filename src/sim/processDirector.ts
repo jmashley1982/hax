@@ -16,12 +16,25 @@ import type { LayerId } from '@/core/state'
  * identical": the deeper you are, the busier the background gets.
  */
 const LAYER_DENSITY: Record<LayerId, number> = {
-  surface: 0.15,
-  perimeter: 0.3,
-  intranet: 0.45,
-  core: 0.6,
-  kernel: 0.8,
+  surface: 0.3,
+  perimeter: 0.5,
+  intranet: 0.68,
+  core: 0.82,
+  kernel: 0.92,
   physical: 1,
+}
+
+/**
+ * How many windows a single firing opens. Deep layers pop two or three at
+ * once, which is what turns "an occasional window" into the constant
+ * background churn the brief asked for ("substantially more pop-ups with
+ * random code running").
+ */
+export function burstSize(layer: LayerId, rng: Rng): number {
+  const d = LAYER_DENSITY[layer]
+  if (d >= 0.9) return rng() < 0.45 ? 3 : 2
+  if (d >= 0.6) return rng() < 0.5 ? 2 : 1
+  return 1
 }
 
 export class ProcessSpawnDirector {
@@ -29,12 +42,17 @@ export class ProcessSpawnDirector {
 
   constructor(private rng: Rng) {}
 
+  /** Hold off spawning for `ms` -- used so a reboot comes back to a calm desk. */
+  defer(elapsedMs: number, ms: number): void {
+    this.nextAt = Math.max(this.nextAt, elapsedMs + ms)
+  }
+
   /** Call every tick; returns true exactly when a new process window should spawn. */
   tick(elapsedMs: number, layer: LayerId, tension: number): boolean {
     if (elapsedMs < this.nextAt) return false
     const intensity = Math.min(1, LAYER_DENSITY[layer] * 0.7 + tension * 0.3)
-    const lo = Math.max(600, 7000 - intensity * 5500)
-    const hi = Math.max(lo + 400, 12000 - intensity * 8000)
+    const lo = Math.max(320, 3600 - intensity * 3100)
+    const hi = Math.max(lo + 260, 6200 - intensity * 4900)
     this.nextAt = elapsedMs + int(this.rng, lo, hi)
     return true
   }

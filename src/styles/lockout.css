@@ -1,0 +1,311 @@
+/* LOCKOUT -- full-screen takeover when the target kills your terminal.
+   Sits above absolutely everything (windows are z-index 600-900, the
+   ending banner is 2000) because while this is up, nothing else in the
+   app is reachable or should be. */
+.lockout {
+  position: absolute;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.2rem;
+  background: #000;
+  text-align: center;
+  animation: lockout-in 180ms ease-out;
+  /* Fixed firmware palette, deliberately NOT the layer palette. This is
+     the player's own machine's BIOS, not the target's network -- inheriting
+     the depth color made it look like just another part of the hack. */
+  --fw: #ffb339;
+  --fw-dim: #7a5410;
+  --fw-bright: #ffe2b0;
+  color: var(--fw);
+}
+
+.lockout__frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: min(94vw, 720px);
+  padding: 1.6rem 1.4rem 1.2rem;
+  border: 1px solid var(--fw-dim);
+  background: linear-gradient(180deg, rgba(255, 179, 57, 0.05), transparent 40%);
+  box-shadow: 0 0 60px rgba(255, 179, 57, 0.08), inset 0 0 80px rgba(0, 0, 0, 0.6);
+}
+
+.lockout__head {
+  width: 100%;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--fw-dim);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--fw-dim);
+}
+
+.lockout__steps {
+  width: 100%;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--fw-dim);
+  min-height: 1.1em;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--fw-dim);
+}
+
+@keyframes lockout-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.lockout.is-closing {
+  animation: lockout-out 400ms ease-in forwards;
+}
+
+@keyframes lockout-out {
+  to {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+}
+
+.lockout__title {
+  font-size: clamp(20px, 4vw, 34px);
+  letter-spacing: 0.2em;
+  color: var(--fw-bright);
+  text-shadow: 0 0 18px rgba(255, 179, 57, 0.55);
+}
+
+.lockout__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  width: min(92vw, 560px);
+}
+
+.lockout__lead {
+  margin: 0;
+  font-size: clamp(12px, 1.6vw, 15px);
+  line-height: 1.5;
+  color: var(--fw);
+  max-width: 46ch;
+}
+
+.lockout__lead--dim {
+  color: var(--fw-dim);
+}
+
+.lockout__hint {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--fw-dim);
+}
+
+/* ---- 1. the kill: violent red, then black ---- */
+
+.lockout--seize {
+  background: #0a0000;
+  color: var(--danger);
+  animation: lockout-seize 2.2s steps(1) forwards;
+}
+
+.lockout--seize .lockout__title {
+  color: var(--danger);
+  text-shadow: 0 0 24px var(--danger);
+}
+
+/* The kill screen is the target's doing, so the frame goes red with it --
+   the amber firmware chrome only takes over once the machine is ours again. */
+.lockout--seize .lockout__frame {
+  border-color: var(--danger);
+  background: linear-gradient(180deg, rgba(255, 59, 59, 0.07), transparent 40%);
+  box-shadow: 0 0 60px rgba(255, 59, 59, 0.18), inset 0 0 80px rgba(0, 0, 0, 0.6);
+}
+
+.lockout--seize .lockout__head,
+.lockout--seize .lockout__steps {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.lockout--seize .lockout__lead--dim {
+  color: rgba(255, 59, 59, 0.6);
+}
+
+@keyframes lockout-seize {
+  0%,
+  8% {
+    background: #3a0000;
+  }
+  10%,
+  18% {
+    background: #0a0000;
+  }
+  20%,
+  26% {
+    background: #3a0000;
+  }
+  28%,
+  100% {
+    background: #050000;
+  }
+}
+
+/* ---- 2. dead machine ---- */
+
+.lockout__halted {
+  font-size: clamp(14px, 2vw, 18px);
+  letter-spacing: 0.24em;
+  color: #4a4a4a;
+}
+
+.lockout__power {
+  margin-top: 1.2rem;
+  min-height: 56px;
+  padding: 0 1.6rem;
+  background: transparent;
+  border: 1px solid var(--fw-dim);
+  color: var(--fw);
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  animation: lockout-pulse 1.4s ease-in-out infinite;
+}
+
+.lockout__power:hover {
+  border-color: var(--fw);
+  color: var(--fw-bright);
+}
+
+@keyframes lockout-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+    opacity: 0.7;
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(255, 179, 57, 0.55);
+    opacity: 1;
+  }
+}
+
+/* ---- 3/7. streaming logs (POST + reconnect) ---- */
+
+.lockout__log {
+  width: 100%;
+  max-height: 34vh;
+  overflow-y: auto;
+  text-align: left;
+  font-size: clamp(10px, 1.3vw, 13px);
+  line-height: 1.6;
+  color: var(--fw-dim);
+  scrollbar-width: none;
+}
+
+.lockout__log::-webkit-scrollbar {
+  display: none;
+}
+
+.lockout__log .is-ok {
+  color: #39ff6a;
+  text-shadow: 0 0 8px rgba(255, 179, 57, 0.55);
+}
+
+/* ---- 4. power rail ---- */
+
+.lockout__rail {
+  width: 100%;
+  height: 22px;
+  border: 1px solid var(--fw-dim);
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.lockout__rail-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--fw);
+  box-shadow: 0 0 14px rgba(255, 179, 57, 0.55);
+  transition: width 70ms linear;
+}
+
+.lockout__bigbtn {
+  min-height: 56px;
+  min-width: 180px;
+  background: transparent;
+  border: 1px solid var(--fw);
+  color: var(--fw-bright);
+  font-family: inherit;
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+}
+
+.lockout__bigbtn:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ---- 5. volumes ---- */
+
+.lockout__volumes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.lockout__volume {
+  min-height: 46px;
+  padding: 0 0.8rem;
+  background: transparent;
+  border: 1px solid var(--fw-dim);
+  color: var(--fw-dim);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lockout__volume.is-mounted {
+  border-color: #39ff6a;
+  color: #39ff6a;
+  text-shadow: 0 0 8px rgba(255, 179, 57, 0.55);
+}
+
+/* ---- 6. re-key ---- */
+
+.lockout__rekey {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.lockout__glyph {
+  width: 56px;
+  height: 62px;
+  background: transparent;
+  border: 1px solid var(--fw-dim);
+  color: var(--fw-dim);
+  font-family: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.lockout__glyph.is-set {
+  border-color: #39ff6a;
+  color: var(--fw-bright);
+  background: rgba(57, 255, 106, 0.14);
+  text-shadow: 0 0 10px rgba(255, 179, 57, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lockout,
+  .lockout--seize,
+  .lockout__power {
+    animation: none;
+  }
+}

@@ -37,6 +37,16 @@ export function cycleTheme(state: GameState): void {
  * glow all at once. This is what makes each layer a visibly different
  * place instead of six identically-green stretches.
  */
+/**
+ * Marks the document with the current depth so styles/layers.css can give
+ * each layer its own *structure* -- chrome, borders, ornaments, density,
+ * background texture -- not just a different set of colors. Colour alone
+ * left every layer feeling identical once the novelty wore off.
+ */
+export function applyLayerSkin(layer: LayerId): void {
+  document.documentElement.dataset.layer = layer
+}
+
 export function applyLayerPalette(palette: LayerPalette): void {
   const root = document.documentElement
   root.style.setProperty('--fg', palette.fg)

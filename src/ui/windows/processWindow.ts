@@ -26,19 +26,60 @@ const PROC_LABELS = [
   'exfil/stage2',
 ] as const
 
+/**
+ * Process windows come in flavors so a screen full of them doesn't read as
+ * the same window stamped six times. Each kind draws its body from a
+ * different generator, so one is streaming a hex dump while another is
+ * compiling and a third is dumping SQL.
+ */
+type ProcKind = 'log' | 'hexdump' | 'build' | 'source'
+
+const KIND_TITLES: Record<ProcKind, (rng: Rng) => string> = {
+  log: (r) => `PROC ${int(r, 1000, 9999)} :: ${pick(r, PROC_LABELS)}`,
+  hexdump: (r) => `xxd :: 0x${int(r, 0x1000, 0xfffff).toString(16)}`,
+  build: (r) => `cc :: payload-${pick(r, ['x86_64', 'aarch64', 'armv7'] as const)}`,
+  source: (r) => `less :: ${pick(r, ['stage2.c', 'hook.py', 'inject.rs', 'dropper.go', 'shim.asm'] as const)}`,
+}
+
+function bodyLine(kind: ProcKind, content: ContentEngine, layer: LayerDef, rng: Rng, i: number): string {
+  switch (kind) {
+    case 'hexdump': {
+      const off = (0x400 + i * 16).toString(16).padStart(8, '0')
+      const bytes = Array.from({ length: 8 }, () => int(rng, 0, 255).toString(16).padStart(2, '0')).join(' ')
+      return `${off}  ${bytes}  ${content.line('crypto', 'keygen').slice(0, 16)}`
+    }
+    case 'build':
+      return pick(rng, [
+        `  CC    ${pick(rng, ['loader', 'stage2', 'hook', 'shim'] as const)}.o`,
+        `  LD    payload.elf`,
+        `  STRIP payload.elf  (${int(rng, 12, 340)}KB)`,
+        `  warning: unused result [-Wunused-result]`,
+        `  ${int(rng, 1, 90)}% [${'='.repeat(int(rng, 1, 18))}>]`,
+      ])
+    case 'source':
+      return content.line('filesystem', 'grepHit')
+    case 'log':
+    default: {
+      const source = layer.burstSources[i % layer.burstSources.length]
+      return source ? content.line(...source) : ''
+    }
+  }
+}
+
 export function spawnProcessWindow(manager: WindowManager, content: ContentEngine, layer: LayerDef, rng: Rng): void {
-  const pid = int(rng, 1000, 9999)
-  const label = pick(rng, PROC_LABELS)
-  const win = manager.spawn({ title: `PROC ${pid} :: ${label}`, modal: false, closable: true, decor: 'normal' }, 'random')
-  win.el.classList.add('proc-window')
+  const kind: ProcKind = pick(rng, ['log', 'log', 'hexdump', 'build', 'source'] as const)
+  const win = manager.spawn(
+    { title: KIND_TITLES[kind](rng), modal: false, closable: true, decor: 'normal' },
+    'random',
+  )
+  win.el.classList.add('proc-window', `proc-window--${kind}`)
 
   const body = document.createElement('div')
   body.className = 'proc-window__log'
   win.setBody(body)
 
-  const lineDelayMs = int(rng, 30, 60)
-  const totalLines = int(rng, 5, 11)
-  const sources = layer.burstSources
+  const lineDelayMs = int(rng, 26, 55)
+  const totalLines = int(rng, 5, 12)
   let printed = 0
 
   const timer = setInterval(() => {
@@ -53,11 +94,11 @@ export function spawnProcessWindow(manager: WindowManager, content: ContentEngin
       setTimeout(() => win.close(), int(rng, 900, 1600))
       return
     }
-    const source = sources[printed % sources.length]
-    if (source) {
+    const text = bodyLine(kind, content, layer, rng, printed)
+    if (text) {
       const line = document.createElement('div')
       line.className = 'proc-window__line'
-      line.textContent = content.line(...source)
+      line.textContent = text
       body.appendChild(line)
       body.scrollTop = body.scrollHeight
     }

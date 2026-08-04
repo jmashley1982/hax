@@ -1,7 +1,12 @@
 import { int, type Rng } from '@/core/rng'
 import { Win, type WindowOptions } from './window'
 
-const MAX_NONMODAL = 6
+/**
+ * How many throwaway (unpinned, non-modal) windows may be alive at once --
+ * background process windows and transient dialogs. Task panels are pinned
+ * and never counted against this.
+ */
+const MAX_TRANSIENT = 6
 
 export type Placement = 'cascade' | 'center' | 'random'
 
@@ -58,13 +63,19 @@ export class WindowManager {
       win.focus(this.zCounter)
     })
 
-    // Evict the oldest *unpinned* window when the board gets crowded.
-    // Pinned windows (task panels) are exempt -- the Director owns their
-    // lifecycle, and closing one mid-solve would destroy player work.
+    // Evict the oldest *unpinned* windows when the desk gets crowded.
+    // Pinned windows (task panels, the TARGET site) are exempt -- the
+    // Director owns their lifecycle and closing one mid-solve would destroy
+    // player work.
+    //
+    // The budget counts ONLY evictable windows. It used to compare the
+    // total non-modal count against the cap, which meant the pinned task
+    // panels alone (5-7 of them at the deep layers) already exceeded it --
+    // so every background process window was culled the instant it opened,
+    // exactly where the churn is supposed to be heaviest.
     const evictable = this.windows.filter((w) => !w.isModal && !w.isPinned)
-    const nonModalCount = this.windows.filter((w) => !w.isModal).length
-    if (nonModalCount > MAX_NONMODAL) {
-      evictable[0]?.close()
+    for (let i = 0; i <= evictable.length - MAX_TRANSIENT; i++) {
+      evictable[i]?.close()
     }
 
     return win
@@ -72,6 +83,21 @@ export class WindowManager {
 
   closeAll(): void {
     for (const w of [...this.windows]) w.close()
+  }
+
+  /**
+   * Sweep throwaway windows (background process windows, warning dialogs)
+   * while leaving pinned ones alone.
+   *
+   * Used by the lockout, which wipes the desk without taking down the
+   * TARGET site window -- closeAll() would, and the Shell holds a
+   * long-lived reference to that panel, so it would be left pointing at a
+   * closed window.
+   */
+  closeTransient(): void {
+    for (const w of [...this.windows]) {
+      if (!w.isPinned) w.close()
+    }
   }
 
   private computePosition(placement: Placement): { x: number; y: number } {
