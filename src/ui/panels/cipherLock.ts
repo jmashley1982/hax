@@ -1,6 +1,7 @@
 import { hex, int, pick } from '@/core/rng'
 import type { WindowManager } from '@/ui/windows/manager'
 import { TaskPanel, type PanelContext } from './panel'
+import { inputVerbs } from '@/core/device'
 
 const GLYPHS = '0123456789ABCDEF'.split('')
 
@@ -32,7 +33,7 @@ export class CipherLockPanel extends TaskPanel {
 
     const hint = document.createElement('div')
     hint.className = 'panel__hint'
-    hint.textContent = 'click each glyph until it locks'
+    hint.textContent = inputVerbs('click each glyph until it locks')
     this.root.appendChild(hint)
 
     const grid = document.createElement('div')

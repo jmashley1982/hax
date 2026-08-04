@@ -1,6 +1,7 @@
 import { hex, int } from '@/core/rng'
 import type { WindowManager } from '@/ui/windows/manager'
 import { TaskPanel, type PanelContext } from './panel'
+import { inputVerbs } from '@/core/device'
 
 /**
  * BRUTE FORCE -- the panel that makes key-mashing feel powerful.
@@ -30,7 +31,7 @@ export class BruteForcePanel extends TaskPanel {
   protected buildBody(): void {
     const hint = document.createElement('div')
     hint.className = 'panel__hint'
-    hint.textContent = 'mash keys to force the key'
+    hint.textContent = inputVerbs('mash keys to force the key')
     this.root.appendChild(hint)
 
     this.readout = document.createElement('div')

@@ -1,6 +1,7 @@
 import { hex, int } from '@/core/rng'
 import type { WindowManager } from '@/ui/windows/manager'
 import { TaskPanel, type PanelContext } from './panel'
+import { inputVerbs } from '@/core/device'
 
 /**
  * TRACE DEFENSE -- hostile pings crawl toward your core; click to pop
@@ -29,7 +30,7 @@ export class TraceDefensePanel extends TaskPanel {
 
     const hint = document.createElement('div')
     hint.className = 'panel__hint'
-    hint.textContent = 'click the incoming traces'
+    hint.textContent = inputVerbs('click the incoming traces')
     this.root.appendChild(hint)
 
     this.field = document.createElement('div')

@@ -1,3 +1,4 @@
+import { inputVerbs } from '@/core/device'
 import type { ThreatEvent, ThreatKind } from '@/sim/counterHack'
 import type { WindowManager } from '@/ui/windows/manager'
 import type { Win } from '@/ui/windows/window'
@@ -56,10 +57,10 @@ export class ThreatPanel {
     const body = document.createElement('div')
     const [line1, line2] = FLAVOR[event.kind](org)
     const p1 = document.createElement('p')
-    p1.textContent = line1 ?? ''
+    p1.textContent = inputVerbs(line1 ?? '')
     const p2 = document.createElement('p')
     p2.className = 'panel__hint'
-    p2.textContent = line2 ?? ''
+    p2.textContent = inputVerbs(line2 ?? '')
     body.append(p1, p2)
 
     const field = document.createElement('div')

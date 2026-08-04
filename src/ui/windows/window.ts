@@ -1,3 +1,5 @@
+import { isMobileLayout } from '@/core/device'
+
 export interface WindowButton {
   label: string
   onClick: () => void
@@ -121,6 +123,10 @@ export class Win {
 
   private bindDrag(handle: HTMLElement): void {
     handle.addEventListener('pointerdown', (e) => {
+      // In the mobile layout windows are a static scrolling column, so
+      // there is nothing to drag -- and letting a title-bar drag through
+      // would fight the scroller for the gesture.
+      if (isMobileLayout()) return
       const startX = e.clientX
       const startY = e.clientY
       const originLeft = this.el.offsetLeft

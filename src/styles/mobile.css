@@ -1,0 +1,341 @@
+/* ============================================================
+   MOBILE LAYOUT
+   Everything here is gated on <html data-layout="mobile">, set by
+   core/device.ts. The desktop build is untouched.
+
+   The desktop board is floating, absolutely-positioned, draggable windows
+   spread across a wide screen. On a phone that collapses to a single
+   scrolling column: same windows, same panels, same game -- just stacked
+   and sized for a thumb.
+   ============================================================ */
+
+[data-layout='mobile'] body {
+  /* Kill pull-to-refresh and rubber-banding -- both fire constantly when
+     the whole interaction model is dragging a finger around the board. */
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- the board becomes a scrolling column ---- */
+
+[data-layout='mobile'] .win-layer {
+  position: absolute;
+  inset: 0;
+  /* --board-top is measured from the live HUD at runtime (shell.ts's
+     bindBoardOffset), not guessed. A fixed value can't be right at every
+     width: the HUD wraps to an extra line on a 320px screen, and a
+     hardcoded padding that cleared it on a 390px phone left the BREACH and
+     HEAT bars hidden behind the first panel on an iPhone SE. The fallback
+     only applies for the first frame before the measurement lands. */
+  padding: var(--board-top, 5.4rem) 0.6rem calc(8.5rem + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* Vertical drags scroll; horizontal ones are left for the smear gesture
+     (see ui/touch.ts). */
+  touch-action: pan-y;
+  pointer-events: auto;
+  scrollbar-width: none;
+}
+
+[data-layout='mobile'] .win-layer::-webkit-scrollbar {
+  display: none;
+}
+
+/* The window must stop being absolutely placed (the manager writes inline
+   left/top for the desktop board) but must STILL be a positioned ancestor:
+   `.panel__seal` and `.panel__float` are `position:absolute; inset:0`
+   children of it. Using `position: static` here let the SEALED overlay
+   escape its own window and cover the entire screen, which made the game
+   unplayable from the PERIMETER layer down. `relative` keeps the
+   containing block; `left/top: auto !important` beats the inline offsets
+   so it doesn't get shifted by them. */
+[data-layout='mobile'] .win {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+[data-layout='mobile'] .panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Dragging is meaningless in a stacked column, and grabbing a title bar
+   would fight the scroller. */
+[data-layout='mobile'] .win__title {
+  cursor: default;
+  font-size: 12px;
+  padding: 0.6rem 0.7rem;
+}
+
+[data-layout='mobile'] .win__body {
+  padding: 0.7rem 0.8rem;
+}
+
+/* ---- bigger touch targets (44px is the accessible minimum) ---- */
+
+[data-layout='mobile'] .cell {
+  min-height: 44px;
+  font-size: 14px;
+  padding: 8px 4px;
+}
+
+[data-layout='mobile'] .cell-grid {
+  gap: 6px;
+}
+
+[data-layout='mobile'] .node {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 18px;
+}
+
+[data-layout='mobile'] .exfil-row {
+  min-height: 44px;
+  font-size: 13px;
+}
+
+[data-layout='mobile'] .threat__node {
+  width: 46px;
+  height: 46px;
+  font-size: 20px;
+}
+
+[data-layout='mobile'] .trace-field {
+  height: 130px;
+}
+
+[data-layout='mobile'] .trace-ping {
+  font-size: 22px;
+  padding: 8px 10px;
+}
+
+[data-layout='mobile'] .signal-slider {
+  height: 44px;
+}
+
+[data-layout='mobile'] .win__btn {
+  min-height: 44px;
+  font-size: 13px;
+}
+
+[data-layout='mobile'] .panel__seal {
+  font-size: 13px;
+}
+
+/* ---- threats must never be scrolled out of sight ---- */
+
+/* A counter-intrusion is a timed emergency -- if it can scroll off-screen
+   you lose runs to something you never saw. Threat windows are appended
+   like any other window, which put them at the BOTTOM of a long scrolling
+   column, well out of view. `order: -1` floats them to the top of the
+   flex column regardless of DOM order, and sticky keeps them pinned there
+   while you scroll the panels underneath. */
+[data-layout='mobile'] .win.threat {
+  order: -1;
+  position: sticky !important;
+  top: 0;
+  z-index: 900 !important;
+  min-width: 0;
+}
+
+/* ---- chrome ---- */
+
+[data-layout='mobile'] .terminal {
+  /* Full-width dim backdrop behind the stack rather than a side strip
+     that would eat half a phone screen. */
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  padding: 4.4rem 0.8rem 8rem;
+  opacity: 0.16;
+  font-size: 10px;
+  mask-image: none;
+}
+
+[data-layout='mobile'] .objective {
+  top: 0.5rem;
+  left: 0.6rem;
+  right: 0.6rem;
+  max-width: none;
+  font-size: 11px;
+}
+
+[data-layout='mobile'] .objective__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The desktop HUD is a right-aligned vertical stack of rows. At phone
+   height that stack ran down past the top of the panel column and the
+   BREACH/HEAT bars ended up rendered *underneath* the first panel --
+   invisible, despite being live game state that drives counter-intrusions.
+   On mobile it becomes a compact wrapping row instead, which fits in two
+   short lines above the board. */
+[data-layout='mobile'] .hud {
+  top: 1.9rem;
+  right: 0.6rem;
+  left: 0.6rem;
+  font-size: 10px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem 0.6rem;
+  text-align: left;
+}
+
+[data-layout='mobile'] .hud__row {
+  gap: 0.3rem;
+}
+
+[data-layout='mobile'] .hud__score {
+  font-size: 12px;
+}
+
+[data-layout='mobile'] .hud__value {
+  min-width: 0;
+}
+
+[data-layout='mobile'] .hud__heatbar {
+  width: 54px;
+  height: 5px;
+}
+
+[data-layout='mobile'] .hud__ladder {
+  font-size: 8px;
+  gap: 2px;
+  flex-basis: 100%;
+  justify-content: space-between;
+}
+
+/* The fake command line collides with the breach pad's thumb zone, and it
+   is pure decoration -- fold it into the status strip instead. */
+[data-layout='mobile'] .prompt {
+  left: 0.6rem;
+  right: 0.6rem;
+  bottom: calc(6.6rem + env(safe-area-inset-bottom));
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0.75;
+}
+
+[data-layout='mobile'] .statusbar {
+  font-size: 9px;
+  padding: 0.35rem 0.6rem calc(0.35rem + env(safe-area-inset-bottom));
+  gap: 0.5rem;
+}
+
+[data-layout='mobile'] .statusbar span:last-child {
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-layout='mobile'] .target-site__body {
+  width: 100%;
+  height: 210px;
+}
+
+[data-layout='mobile'] .start-overlay__box {
+  width: min(92vw, 360px);
+}
+
+[data-layout='mobile'] .ending-banner__title {
+  font-size: 26px;
+}
+
+[data-layout='mobile'] .ending-banner__sub {
+  font-size: 13px;
+  text-align: center;
+  padding: 0 1rem;
+}
+
+/* ============================================================
+   BREACH PAD -- the keyboard replacement (ui/touch.ts)
+   ============================================================ */
+
+.breach-pad {
+  display: none;
+}
+
+[data-layout='mobile'] .breach-pad {
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  bottom: calc(1.6rem + env(safe-area-inset-bottom));
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 74px;
+  background: var(--panel);
+  border: 1px solid var(--fg);
+  box-shadow: 0 0 18px var(--glow), inset 0 0 30px rgba(0, 0, 0, 0.5);
+  color: var(--fg-bright);
+  /* The pad owns every gesture that starts on it -- no scrolling, no
+     double-tap zoom, no text selection while hammering it. */
+  touch-action: none;
+  cursor: pointer;
+}
+
+[data-layout='mobile'] .breach-pad__label {
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 8px var(--glow);
+  max-width: 92%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-layout='mobile'] .breach-pad__hint {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--fg-dim);
+}
+
+[data-layout='mobile'] .breach-pad.is-down {
+  background: color-mix(in srgb, var(--fg) 16%, var(--panel));
+}
+
+[data-layout='mobile'] .breach-pad.is-firing {
+  animation: breach-pad-fire 90ms ease-out;
+}
+
+@keyframes breach-pad-fire {
+  0% {
+    box-shadow: 0 0 0 0 var(--fg), inset 0 0 30px rgba(0, 0, 0, 0.5);
+    border-color: var(--fg-bright);
+  }
+  100% {
+    box-shadow: 0 0 18px var(--glow), inset 0 0 30px rgba(0, 0, 0, 0.5);
+    border-color: var(--fg);
+  }
+}
+
+[data-layout='mobile'] .breach-pad.is-swiped {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 24px var(--accent-2), inset 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-layout='mobile'] .breach-pad.is-firing {
+    animation: none;
+  }
+}

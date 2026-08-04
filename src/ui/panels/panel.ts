@@ -1,3 +1,4 @@
+import { isMobileLayout } from '@/core/device'
 import type { Rng } from '@/core/rng'
 import type { WindowManager } from '@/ui/windows/manager'
 import type { Win } from '@/ui/windows/window'
@@ -107,7 +108,7 @@ export abstract class TaskPanel {
     this.sealed = true
     const seal = document.createElement('button')
     seal.className = 'panel__seal'
-    seal.textContent = '🔒 SEALED — CLICK OR TYPE TO BREACH'
+    seal.textContent = isMobileLayout() ? '🔒 SEALED — TAP TO BREACH' : '🔒 SEALED — CLICK OR TYPE TO BREACH'
     seal.addEventListener('click', (e) => {
       e.stopPropagation()
       this.breakSeal()

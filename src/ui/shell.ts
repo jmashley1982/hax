@@ -28,6 +28,8 @@ import { WindowManager } from './windows/manager'
 import { spawnWarningDialog } from './windows/dialogs'
 import { spawnProcessWindow } from './windows/processWindow'
 import { StartOverlay } from './startOverlay'
+import { TouchInput } from './touch'
+import { isMobileLayout } from '@/core/device'
 import { BruteForcePanel } from './panels/bruteForce'
 import { TraceDefensePanel } from './panels/traceDefense'
 import { PANEL_LABELS } from './panels/registry'
@@ -134,6 +136,10 @@ export class Shell {
     this.mountStatusBar(this.shellEl)
     this.bindTargeting()
     this.bindModeHotkey()
+    if (isMobileLayout()) {
+      this.mountTouchInput()
+      this.bindBoardOffset()
+    }
 
     store.on('tick', ({ dt }) => this.onTick(dt))
 
@@ -197,6 +203,82 @@ export class Shell {
       tone: 'success',
       speed: 2,
     })
+  }
+
+  /**
+   * Mobile input. The desktop loop is driven entirely by the keyboard,
+   * which a phone doesn't have -- this routes the BREACH pad and the
+   * smear gesture into the exact same handleKey() path so the game logic
+   * is identical, only the input device changed.
+   */
+  private mountTouchInput(): void {
+    new TouchInput(this.shellEl, {
+      burst: () => this.handleKey('*'),
+      cycleTarget: (direction) => this.cycleTargetPanel(direction),
+      hitPanelElement: (el) => this.hitPanelElement(el),
+      targetLabel: () => this.touchTargetLabel(),
+    })
+  }
+
+  /**
+   * Keep the panel column clear of the HUD by measuring it, rather than
+   * padding by a hardcoded guess.
+   *
+   * The HUD's height is not a constant: it wraps to an extra line on
+   * narrow screens, and its layer ladder changes size as you descend. A
+   * fixed padding that cleared it on one phone left the BREACH and HEAT
+   * bars rendered underneath the first panel on a smaller one -- live
+   * game state, invisible.
+   */
+  private bindBoardOffset(): void {
+    const hud = this.shellEl.querySelector('.hud') as HTMLElement | null
+    if (!hud) return
+    const apply = (): void => {
+      const bottom = hud.getBoundingClientRect().bottom
+      this.shellEl.style.setProperty('--board-top', `${Math.ceil(bottom) + 8}px`)
+    }
+    apply()
+    if (typeof ResizeObserver === 'function') new ResizeObserver(apply).observe(hud)
+    window.addEventListener('resize', apply)
+    window.addEventListener('orientationchange', () => setTimeout(apply, 120))
+  }
+
+  /** Mobile only -- no-op on the desktop board, which doesn't scroll. */
+  private scrollBoardToTop(): void {
+    if (!isMobileLayout()) return
+    this.shellEl.querySelector('.win-layer')?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  /** Step the target to the next/previous workable panel (BREACH pad swipe). */
+  private cycleTargetPanel(direction: number): void {
+    const workable = this.director.activePanels.filter((p) => !p.isDone)
+    if (workable.length === 0) return
+    const idx = this.targetPanel ? workable.indexOf(this.targetPanel) : -1
+    const next = workable[(((idx + direction) % workable.length) + workable.length) % workable.length]
+    if (next) {
+      this.setTarget(next)
+      next.element.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }
+
+  /** Drive a specific panel by its element -- the smear gesture crossing it. */
+  private hitPanelElement(el: HTMLElement): void {
+    const panel = this.director.activePanels.find((p) => p.id === el.dataset.panelId)
+    if (!panel || panel.isDone) return
+    this.setTarget(panel)
+    if (panel.isSealed) {
+      panel.breakSealFromInput()
+      return
+    }
+    if (!panel.onKeyBurst()) this.applyResidualProgress()
+  }
+
+  /** What the BREACH pad reads out, so the player always knows what they're driving. */
+  private touchTargetLabel(): string {
+    if (this.activeThreats.length > 0) return 'REPEL INTRUSION'
+    if (!this.targetPanel) return 'BREACH'
+    const title = this.targetPanel.element.querySelector('.win__title-text')?.textContent ?? 'BREACH'
+    return title.split(' :: ')[0] ?? 'BREACH'
   }
 
   private mountStatusBar(shellEl: HTMLElement): void {
@@ -518,6 +600,10 @@ export class Shell {
     this.shellEl.classList.add('is-counter-intrusion')
     this.waveActive = true
     this.objective.set(`COUNTER-INTRUSION -- REPEL ALL ${wave.kinds.length}`)
+    // On mobile the board is a scrolling column -- snap back to the top so
+    // the wave (which sorts there, see mobile.css) is actually on screen
+    // rather than however far down the player had scrolled.
+    this.scrollBoardToTop()
 
     this.runThreatWave(wave.kinds, wave.hitsNeeded, wave.timeoutMs, (successes, total) => {
       this.shellEl.classList.remove('is-counter-intrusion')

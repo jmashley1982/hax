@@ -1,6 +1,7 @@
 import { hex, int, pick } from '@/core/rng'
 import type { WindowManager } from '@/ui/windows/manager'
 import { TaskPanel, type PanelContext } from './panel'
+import { inputVerbs } from '@/core/device'
 
 const NAMES = [
   'payroll_q4', 'access_matrix', 'staff_roster', 'vault_manifest',
@@ -32,7 +33,7 @@ export class FileExfilPanel extends TaskPanel {
 
     const hint = document.createElement('div')
     hint.className = 'panel__hint'
-    hint.textContent = 'click a file to pull it -- click again to boost'
+    hint.textContent = inputVerbs('click a file to pull it -- click again to boost')
     this.root.appendChild(hint)
 
     const list = document.createElement('div')

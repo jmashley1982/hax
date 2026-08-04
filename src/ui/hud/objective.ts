@@ -1,3 +1,5 @@
+import { inputVerbs } from '@/core/device'
+
 /**
  * The always-visible "what do I do right now" bar.
  *
@@ -25,7 +27,9 @@ export class ObjectiveBar {
   }
 
   set(text: string): void {
-    this.textEl.textContent = text
+    // Central rewrite point for every panel's objectiveText -- see
+    // core/device.ts's inputVerbs.
+    this.textEl.textContent = inputVerbs(text)
   }
 
   setHidden(hidden: boolean): void {
