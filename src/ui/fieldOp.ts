@@ -1,3 +1,4 @@
+import { playSfx } from '@/audio/sounds'
 import { int, pick, hex, type Rng } from '@/core/rng'
 import type { PlayModeProfile } from '@/core/progress'
 import type { WindowManager } from '@/ui/windows/manager'
@@ -132,6 +133,7 @@ export class FieldOp {
   private openExecute(): void {
     if (this.phase !== 'inbound' || this.destroyed) return
     this.phase = 'execute'
+    playSfx('execute')
     this.remainingMs = executeWindowMs(this.opts.mode)
     this.detach()
 

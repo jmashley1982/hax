@@ -1,4 +1,6 @@
 import { store } from '@/core/store'
+import { playSfx } from '@/audio/sounds'
+import { audio } from '@/audio/engine'
 import { clock } from '@/core/clock'
 import { mulberry32, hashSeed, int, type Rng } from '@/core/rng'
 import { saveState, LAYER_ORDER, type GameState } from '@/core/state'
@@ -695,6 +697,7 @@ export class Shell {
     // its own capture-phase listener, and letting input also reach the
     // board behind it would advance panels the player can't even see.
     if (this.lockout) return
+    playSfx('key')
     this.inputPipeline.push({ kind: 'key', token: char })
 
     // Every mode now accepts mashing -- the old INTENT mode made raw
@@ -872,6 +875,7 @@ export class Shell {
   }
 
   private onPanelComplete(panel: TaskPanel): void {
+    playSfx('panelClear')
     awardScore(this.state, 120)
     this.integrity.repair(INTEGRITY_GAIN.panelCleared)
     this.heat.add(-6)
@@ -919,6 +923,11 @@ export class Shell {
       else if (panel instanceof TraceDefensePanel) panel.tickPings(dt)
     }
     this.refreshTarget()
+
+    // The one continuous sound in the game: a low bed that grows with how
+    // much they have noticed you. Driven from the same number the meter
+    // paints, so it can never disagree with what is on screen.
+    audio.setHeat(this.state.heat)
 
     const heatEvents = this.heat.tick(dt)
     if (heatEvents.warn) {
@@ -1194,6 +1203,7 @@ export class Shell {
    */
   private triggerReverseHack(severity: number): void {
     if (this.reverseHack?.active || this.lockout || this.inFinale) return
+    playSfx('alarm')
 
     store.emit('terminal:line', { text: reverseHackOpener(this.target.org, this.rng), tone: 'danger', speed: 0 })
     // An ally shouts a beat before it lands, so the warning channel is
@@ -1295,6 +1305,7 @@ export class Shell {
   private beginLockout(): void {
     this.fieldOp?.abort('terminal seized')
     if (this.lockout) return
+    playSfx('powerDown')
     this.integrity.damage(INTEGRITY_COST.lockout)
     this.reverseHack?.destroy()
     this.reverseHack = null
@@ -1365,6 +1376,7 @@ export class Shell {
     timeoutMs: number,
     onAllResolved: (successes: number, total: number) => void,
   ): void {
+    playSfx('alarm')
     const total = kinds.length
     let resolved = 0
     let successes = 0
@@ -1523,6 +1535,7 @@ export class Shell {
     const seconds = this.mode.id === 'casual' ? 95 : this.mode.id === 'leet' ? 70 : 50
     const hops = this.mode.id === 'casual' ? 3 : this.mode.id === 'leet' ? 4 : 6
 
+    playSfx('alarm')
     this.manhunt = new Manhunt({
       manager: this.windows,
       mount: this.shellEl,
@@ -1781,6 +1794,7 @@ export class Shell {
   }
 
   private grantToken(token: Token): void {
+    playSfx('token')
     if (this.pouch.add(token)) return
     // Pouch full. Paying out nothing after a whole chain would be a swindle,
     // so it converts to an immediate effect instead of evaporating.
@@ -1801,6 +1815,7 @@ export class Shell {
    */
   private spendToken(token: Token): void {
     if (this.destroyed) return
+    playSfx('token')
     if (token.kind === 'skeleton') {
       store.emit('terminal:line', {
         text: `>>>> SKELETON KEY ${token.code} -- every lock on this layer just opened`,
@@ -1859,6 +1874,7 @@ export class Shell {
   }
 
   private handleBreakthrough(): void {
+    playSfx('breakthrough')
     const cleared = this.layers.current
     this.shellEl.classList.add('is-breaching')
     setTimeout(() => this.shellEl.classList.remove('is-breaching'), 400)
@@ -1984,6 +2000,7 @@ export class Shell {
     this.fieldOp?.abort('contract closing')
     if (this.inFinale) return
     this.inFinale = true
+    playSfx('powerDown')
 
     this.director.clearAll()
     this.explicitTarget = null

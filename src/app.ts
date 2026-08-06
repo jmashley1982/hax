@@ -7,6 +7,7 @@ import { Debrief } from '@/ui/dashboard/debrief'
 import { BootSequence } from '@/ui/bootSequence'
 import { mulberry32 } from '@/core/rng'
 import type { Contract } from '@/sim/contracts'
+import { audio } from '@/audio/engine'
 
 /**
  * App-level mode machine: dashboard <-> session (plan §16A).
@@ -125,5 +126,9 @@ export class App {
     this.boot = null
     this.session?.destroy()
     this.session = null
+    // The heat drone belongs to the run, not to the page. Left running it
+    // would hum under the debrief and the dashboard at whatever heat the
+    // contract ended on -- the AudioContext itself is kept, one per page.
+    audio.reset()
   }
 }

@@ -1,3 +1,4 @@
+import { playSfx } from '@/audio/sounds'
 import { int, pick, type Rng } from '@/core/rng'
 import { isMobileLayout } from '@/core/device'
 
@@ -317,6 +318,7 @@ export class LockoutOverlay {
     if (!isMobileLayout() && key !== undefined) {
       const want = this.rekeyCode[this.rekeyIndex] ?? ''
       if (key.toUpperCase() !== want.toUpperCase()) {
+        playSfx('error')
         slot.classList.remove('is-wrong')
         void slot.offsetWidth
         slot.classList.add('is-wrong')

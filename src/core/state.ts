@@ -64,7 +64,10 @@ export function createInitialState(seedLabel?: string): GameState {
     missionId: null,
     objectiveId: null,
     filmMode: false,
-    soundOn: false,
+    // ON by default. This flag sat here unread for the whole project while
+    // the player's report was "i never hear any sounds ever" -- shipping
+    // the feature switched off would ship the complaint.
+    soundOn: true,
     achievements: [],
   }
 }
@@ -126,6 +129,10 @@ export function applySavedCareer(state: GameState): void {
     state.mode = saved.mode
   }
   if (saved.theme) state.theme = saved.theme
+  // Guarded like everything else here: a save written before sound existed
+  // parses fine and leaves this `undefined`, which would silently mute a
+  // returning player rather than falling through to the ON default.
+  if (typeof saved.soundOn === 'boolean') state.soundOn = saved.soundOn
 }
 
 export function clearSavedState(): void {

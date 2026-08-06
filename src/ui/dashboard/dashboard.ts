@@ -3,6 +3,7 @@ import { cycleTheme } from '@/themes/themes'
 import { generateContracts, sectorLabel, type Contract } from '@/sim/contracts'
 import { mulberry32, int, pick } from '@/core/rng'
 import { PLAY_MODES, PLAY_MODE_ORDER } from '@/core/progress'
+import { audio } from '@/audio/engine'
 
 /**
  * The workstation dashboard -- the game's home base (plan §16A).
@@ -185,7 +186,29 @@ export class Dashboard {
     })
     themeRow.append(themeLab, themeBtn)
 
-    box.append(modeRow, modeHint, themeRow)
+    const soundRow = document.createElement('div')
+    soundRow.className = 'dash__field'
+    const soundLab = document.createElement('span')
+    soundLab.textContent = 'SOUND'
+    const soundBtn = document.createElement('button')
+    soundBtn.className = 'dash__toggle'
+    const paintSound = (): void => {
+      soundBtn.textContent = this.state.soundOn ? 'ON' : 'MUTED'
+      soundBtn.dataset.sound = this.state.soundOn ? 'on' : 'off'
+    }
+    soundBtn.addEventListener('click', () => {
+      this.state.soundOn = !this.state.soundOn
+      audio.setEnabled(this.state.soundOn)
+      // This click is itself a gesture, so a player who turns sound on here
+      // gets a context immediately rather than waiting for JACK IN.
+      if (this.state.soundOn) audio.unlock()
+      paintSound()
+      saveState(this.state)
+    })
+    paintSound()
+    soundRow.append(soundLab, soundBtn)
+
+    box.append(modeRow, modeHint, themeRow, soundRow)
     return box
   }
 
@@ -293,6 +316,13 @@ export class Dashboard {
 
   private start(): void {
     if (!this.selected) return
+    // The one place audio is allowed to wake up. Autoplay policy requires a
+    // real gesture, and both JACK IN and RANDOM JOB route through here, so
+    // nothing new is gated behind anything the player wasn't clicking
+    // anyway. Creating the context on load would leave it suspended and
+    // silent -- wired up, and worse than absent.
+    audio.setEnabled(this.state.soundOn)
+    audio.unlock()
     this.opts.onStart(this.selected)
   }
 

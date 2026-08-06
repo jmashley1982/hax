@@ -1,3 +1,4 @@
+import { playSfx } from '@/audio/sounds'
 import { hex, int, pick } from '@/core/rng'
 import type { WindowManager } from '@/ui/windows/manager'
 import { TaskPanel, type PanelContext } from './panel'
@@ -337,6 +338,7 @@ export class DragExfilPanel extends TaskPanel {
       entry.el.classList.add('is-bad')
       this.floatText('INFECTED')
       this.vault.classList.add('is-breached')
+      playSfx('error')
       this.hooks.onCorrupted?.(this.id)
       return
     }

@@ -1,3 +1,4 @@
+import { playSfx } from '@/audio/sounds'
 import type { Rng } from '@/core/rng'
 import { Win, type WindowOptions } from './window'
 
@@ -74,6 +75,11 @@ export class WindowManager {
     win.focus(this.zCounter)
     this.layer.appendChild(win.el)
     this.windows.push(win)
+    // Both chirps live here rather than in Win, because the manager is the
+    // only thing that opens windows and the only thing notified when one
+    // closes -- putting them on Win would mean two call sites and a
+    // guaranteed drift.
+    playSfx('winOpen')
 
     if (win.isModal) {
       this.modalStack.push(win)
@@ -81,6 +87,7 @@ export class WindowManager {
     }
 
     win.onClose(() => {
+      playSfx('winClose')
       this.windows = this.windows.filter((w) => w !== win)
       if (!win.isModal && !win.isFixture) {
         for (const fn of this.closeListeners) fn()
