@@ -185,6 +185,9 @@ export class Win {
         } catch {
           /* already released or the pointer is gone -- nothing to do */
         }
+        // Drop the handle so close() cannot re-run a finished drag's
+        // teardown against listeners that are already gone.
+        if (this.endDrag === endDrag) this.endDrag = null
       }
 
       this.dragging = true

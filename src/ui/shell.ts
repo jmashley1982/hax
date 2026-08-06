@@ -16,7 +16,6 @@ import { ProcessSpawnDirector, burstSize } from '@/sim/processDirector'
 import { LockoutDirector } from '@/sim/lockoutDirector'
 import { LockoutOverlay } from './lockout'
 import { ReverseHack, reverseHackOpener } from './reverseHack'
-import { DragExfilPanel } from './panels/dragExfil'
 import type { ReconResult } from '@/sim/recon'
 import { ContentEngine } from '@/content'
 import type { MissionFacts } from '@/content/grammar'
@@ -219,15 +218,16 @@ export class Shell {
       this.rng,
       (panel) => this.onPanelComplete(panel),
       (panel, delta) => this.onPanelProgress(panel, delta),
+      {
+        onArtifactSecured: () => this.beginExtraction(),
+        // A corrupted file dropped into the local vault is the player
+        // letting them in -- the most direct route to a reverse hack.
+        onCorrupted: () => {
+          this.integrity.damage(INTEGRITY_COST.corruptedFile)
+          this.triggerReverseHack(0.5)
+        },
+      },
     )
-
-    // A corrupted file dropped into the local vault is the player letting
-    // them in -- the single most direct route to a reverse hack.
-    DragExfilPanel.onArtifactSecured = () => this.beginExtraction()
-    DragExfilPanel.onCorrupted = () => {
-      this.integrity.damage(INTEGRITY_COST.corruptedFile)
-      this.triggerReverseHack(0.5)
-    }
 
     this.mountStatusBar(this.shellEl)
     this.bindTargeting()
@@ -986,7 +986,7 @@ export class Shell {
     if (LAYER_ORDER.indexOf(layer) < LAYER_ORDER.indexOf(this.contract.job.completesAt)) return
 
     this.artifactSeeded = true
-    DragExfilPanel.pendingArtifact = this.contract.job.artifact
+    this.director.seedArtifact(this.contract.job.artifact)
     store.emit('terminal:line', {
       text: `>> ${this.contract.job.artifact} LOCATED -- pull it to your vault`,
       tone: 'success',
@@ -1082,6 +1082,9 @@ export class Shell {
         this.heat.add(6)
       },
       onRepelled: () => {
+        // Drop the reference only after tearing it down -- an instance the
+        // Shell has forgotten can never be cleaned up by anything.
+        this.reverseHack?.destroy()
         this.reverseHack = null
         this.integrity.repair(INTEGRITY_GAIN.waveRepelled)
         awardScore(this.state, 140)
@@ -1092,6 +1095,7 @@ export class Shell {
         })
       },
       onTakeover: () => {
+        this.reverseHack?.destroy()
         this.reverseHack = null
         this.integrity.damage(INTEGRITY_COST.lockout)
         // At depth, losing the desktop fight is not just another blackout:

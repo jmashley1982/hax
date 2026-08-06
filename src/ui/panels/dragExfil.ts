@@ -46,22 +46,18 @@ export class DragExfilPanel extends TaskPanel {
   private dragging: FileEntry | null = null
   private ghost: HTMLElement | null = null
 
-  /** Set by the shell so a corrupted drop can trigger the reverse hack. */
-  static onCorrupted: ((panelId: string) => void) | null = null
-
   /**
-   * The contract's actual objective file, seeded by the Shell once the run
-   * reaches the job's layer. The next panel built claims it, shows it as a
-   * marked row, and clears the slot -- so the thing named in the brief is a
-   * real object you have to find and pull, not flavour text.
+   * The objective file and both outcome hooks now arrive through
+   * PanelContext, per instance. They were `static` until R12 -- see the
+   * comment on PanelContext for the cross-contract instant-win that
+   * caused.
    */
-  static pendingArtifact: string | null = null
-  static onArtifactSecured: (() => void) | null = null
-
+  private hooks: PanelContext
   private artifactRow: FileEntry | null = null
 
   constructor(manager: WindowManager, ctx: PanelContext) {
     super(manager, ctx, `dragExfil-${hex(ctx.rng, 4)}`, `VAULT PULL ${hex(ctx.rng, 3).toUpperCase()}`)
+    this.hooks = ctx
     this.init()
   }
 
@@ -100,10 +96,9 @@ export class DragExfilPanel extends TaskPanel {
       remote.appendChild(this.buildFileRow(corrupted))
     }
 
-    // Claim the objective file if one is waiting.
-    const artifact = DragExfilPanel.pendingArtifact
+    // The objective file, if the Director handed this panel one.
+    const artifact = this.hooks.artifact
     if (artifact) {
-      DragExfilPanel.pendingArtifact = null
       const row = this.buildFileRow(false, artifact)
       row.classList.add('is-objective')
       remote.insertBefore(row, remote.firstChild)
@@ -264,13 +259,13 @@ export class DragExfilPanel extends TaskPanel {
       entry.el.classList.add('is-bad')
       this.floatText('INFECTED')
       this.vault.classList.add('is-breached')
-      DragExfilPanel.onCorrupted?.(this.id)
+      this.hooks.onCorrupted?.(this.id)
       return
     }
 
     if (entry.isArtifact) {
       this.floatText('OBJECTIVE SECURED')
-      DragExfilPanel.onArtifactSecured?.()
+      this.hooks.onArtifactSecured?.()
     }
 
     this.pulled += 1

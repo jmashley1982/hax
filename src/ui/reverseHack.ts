@@ -170,19 +170,42 @@ export class ReverseHack {
   private finish(repelled: boolean): void {
     if (this.finished) return
     this.finished = true
+    // Sweep whatever is still up.
+    //
+    // finish() used to set the flag and stop. On the takeover path there
+    // are ALWAYS 1-3 hostiles still on screen, and every one of them kept
+    // a live-looking KILL PROCESS button that now returned instantly at
+    // `if (h.killed || this.finished) return`. Nothing else cleaned them
+    // up either -- they are `pinned`, so neither closeTransient() (the
+    // lockout path) nor director.clearAll() (the manhunt path) touches
+    // them, and the Shell dropped its reference without calling destroy().
+    // The result was permanent, undismissable, fully draggable dead
+    // windows: "the kill process windows, if not closed in time, wont go
+    // away", and a title bar you could still grab.
+    this.sweep()
     this.opts.mount.classList.remove('is-reverse-hacked')
     if (repelled) this.opts.onRepelled()
   }
 
-  /** Tear down without firing any outcome -- used when the session ends under it. */
-  destroy(): void {
-    this.finished = true
+  private sweep(): void {
     for (const h of this.hostiles) {
       clearTimeout(h.timer)
       clearInterval(h.interval)
       h.win.close()
     }
     this.hostiles = []
+  }
+
+  /** Tear down without firing any outcome -- used when the session ends under it. */
+  destroy(): void {
+    // Re-entrant-safe: finish() calls sweep(), and win.close() runs
+    // onClose callbacks, so destroy() must never be able to loop back in.
+    if (this.finished && this.hostiles.length === 0) {
+      this.opts.mount.classList.remove('is-reverse-hacked')
+      return
+    }
+    this.finished = true
+    this.sweep()
     this.opts.mount.classList.remove('is-reverse-hacked')
   }
 }

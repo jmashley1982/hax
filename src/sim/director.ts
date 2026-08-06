@@ -5,6 +5,12 @@ import type { TaskPanel } from '@/ui/panels/panel'
 import { PANEL_TYPES, pickPanelType } from '@/ui/panels/registry'
 import { unlockedPanelTypes, type LayerSystem } from './layers'
 
+/** Outcome hooks the Shell wants from whichever panel happens to carry them. */
+export interface DirectorHooks {
+  onArtifactSecured?: () => void
+  onCorrupted?: (panelId: string) => void
+}
+
 /**
  * The spawn director -- what actually drives the screen now.
  *
@@ -37,7 +43,24 @@ export class Director {
     private rng: Rng,
     private onPanelComplete: (panel: TaskPanel) => void,
     private onPanelProgress: (panel: TaskPanel, delta: number) => void,
+    /** Vault-pull outcome hooks, threaded per panel instead of via statics. */
+    private hooks: DirectorHooks = {},
   ) {}
+
+  /**
+   * The contract's objective filename, waiting to be handed to the next
+   * vault-pull panel built.
+   *
+   * Deliberately an instance field on the Director, not a static on the
+   * panel class: the Director dies with its Shell, so a run that ends
+   * before the file is ever claimed cannot poison the next contract.
+   */
+  private pendingArtifact: string | null = null
+
+  /** Called by the Shell when the run reaches the job's layer. */
+  seedArtifact(name: string): void {
+    this.pendingArtifact = name
+  }
 
   get activePanels(): readonly TaskPanel[] {
     return this.panels
@@ -84,8 +107,16 @@ export class Director {
     const factory = PANEL_TYPES[typeId]
     if (!factory) return null
 
+    // Hand the objective file to the first vault-pull panel that appears,
+    // then clear it so it is never handed out twice.
+    const artifact = typeId === 'dragExfil' ? this.pendingArtifact : null
+    if (artifact) this.pendingArtifact = null
+
     const panel = factory(this.manager, {
       rng: this.rng,
+      artifact,
+      onArtifactSecured: this.hooks.onArtifactSecured,
+      onCorrupted: this.hooks.onCorrupted,
       // Size/complexity comes from depth first, tension second -- so deep
       // panels are visibly denser than shallow ones regardless of timing.
       intensity: Math.min(1, this.layers.current.sizeBias * 0.7 + this.layers.tension * 0.3),

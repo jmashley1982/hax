@@ -27,6 +27,30 @@ export interface PanelContext {
   modifier: string
   onComplete: (panel: TaskPanel) => void
   onProgress: (panel: TaskPanel, delta: number) => void
+
+  /*
+   * Vault-pull hooks. These used to be `static` fields on DragExfilPanel,
+   * which made them survive the panel, the Director AND the whole Shell --
+   * and a Shell is now constructed and destroyed once per contract. That
+   * was not a theoretical leak:
+   *
+   *   maybeSeedArtifact() sets the objective filename when a run reaches
+   *   the job's layer. If the run then ended -- aborted, burned, or on the
+   *   finale -- before any vault-pull panel was built to claim it, the
+   *   value survived into the NEXT contract. That contract's first
+   *   vault-pull panel then rendered the *previous* job's objective file,
+   *   marked as the objective, and dragging it fired onArtifactSecured
+   *   into the new Shell: an instant win on a job that was never seeded.
+   *
+   * Per-instance, they cannot outlive the panel that was handed them.
+   */
+
+  /** The contract's objective filename, if this panel should carry it. */
+  artifact?: string | null
+  /** Fired when the objective file reaches the vault. */
+  onArtifactSecured?: () => void
+  /** Fired when a corrupted file reaches the vault -- triggers the reverse hack. */
+  onCorrupted?: (panelId: string) => void
 }
 
 export abstract class TaskPanel {

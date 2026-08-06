@@ -234,6 +234,18 @@
   transform-origin: left center;
 }
 
+/*
+ * A dying hostile animates to opacity 0 but is not marked `is-closing`
+ * until its close() timer fires 260-400ms later. Without this it spends
+ * that window INVISIBLE AND STILL GRABBABLE -- you can start a drag on a
+ * window you cannot see, which is one of the ways the cursor ends up
+ * "stuck on a window".
+ */
+.win.hostile.is-killed,
+.win.hostile.is-breached {
+  pointer-events: none;
+}
+
 .win.hostile.is-killed {
   animation: hostile-killed 260ms ease-out forwards;
 }
