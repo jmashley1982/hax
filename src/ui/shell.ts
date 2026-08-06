@@ -1,6 +1,6 @@
 import { store } from '@/core/store'
 import { clock } from '@/core/clock'
-import { mulberry32, type Rng } from '@/core/rng'
+import { mulberry32, hashSeed, type Rng } from '@/core/rng'
 import { saveState, LAYER_ORDER, type GameState } from '@/core/state'
 import type { InteractionMode } from '@/core/events'
 import { InputPipeline } from '@/core/input'
@@ -15,12 +15,12 @@ import { CounterHackDirector, type ThreatEvent, type ThreatKind, type ThreatWave
 import { ProcessSpawnDirector, burstSize } from '@/sim/processDirector'
 import { LockoutDirector } from '@/sim/lockoutDirector'
 import { LockoutOverlay } from './lockout'
-import { generateTarget } from '@/sim/target'
-import { reconTierZero, reconLive, type ReconResult } from '@/sim/recon'
+import { dossierFor, type ReconResult } from '@/sim/recon'
 import { ContentEngine } from '@/content'
 import type { MissionFacts } from '@/content/grammar'
 import type { LayerId } from '@/core/state'
 import type { LayerDef, LayerPalette } from '@/sim/layers'
+import type { Contract } from '@/sim/contracts'
 import { CrtOverlay } from '@/fx/crt'
 import { Terminal } from './terminal'
 import { Prompt } from './prompt'
@@ -29,7 +29,6 @@ import { ObjectiveBar } from './hud/objective'
 import { WindowManager } from './windows/manager'
 import { spawnWarningDialog } from './windows/dialogs'
 import { spawnProcessWindow } from './windows/processWindow'
-import { StartOverlay } from './startOverlay'
 import { TouchInput } from './touch'
 import { isMobileLayout } from '@/core/device'
 import { BruteForcePanel } from './panels/bruteForce'
@@ -42,6 +41,13 @@ import type { TaskPanel } from './panels/panel'
 
 const MODE_CYCLE: readonly InteractionMode[] = ['hybrid', 'chaos', 'intent']
 const BREAKTHROUGH_GRACE_MS = 2500
+
+/** How a contract ended, handed back to the App for career bookkeeping. */
+export interface SessionOutcome {
+  kind: 'completed' | 'burned' | 'aborted'
+  deepestLayer: LayerId
+  scoreEarned: number
+}
 
 /**
  * Root shell -- now a thin wiring layer over the panel desktop.
@@ -82,25 +88,47 @@ export class Shell {
   private ejecting = false
   /** True for the duration of a periodic wave -- see renderObjective()'s guard. */
   private waveActive = false
-  private contractCount = 0
 
   /**
-   * Set only when the player pointed a run at a real URL (startOverlay).
-   * Non-null means every breakthrough/restart repaints with the site's
-   * brand color instead of the built-in fictional per-layer palette --
-   * see handleBreakthrough/startNewContract below.
+   * Per-layer palettes derived from the contract's brand color, so a run
+   * keeps one visual identity as it descends instead of reverting to the
+   * generic per-layer colors.
    */
   private activePalettes: Record<LayerId, LayerPalette> | null = null
   private recon: ReconResult | null = null
   private targetSite: TargetSitePanel | null = null
+  private offTick: (() => void) | null = null
+  /** Every pending timer this session owns, so destroy() can cancel them all. */
+  private pending: Array<ReturnType<typeof setTimeout>> = []
+  private destroyed = false
+  private scoreAtStart = 0
+  private deepestThisRun: LayerId = 'surface'
+  /**
+   * Child components are held so destroy() can unhook them. Each of these
+   * subscribes to the store or to window events, and removing only their
+   * DOM (which shellEl.remove() does) leaves those subscriptions live --
+   * every finished contract would otherwise add another Hud rendering on a
+   * detached node every frame, forever.
+   */
+  private terminal!: Terminal
+  private crt!: CrtOverlay
+  private prompt!: Prompt
+  private hud!: Hud
 
-  constructor(root: HTMLElement, private state: GameState) {
+  constructor(
+    root: HTMLElement,
+    private state: GameState,
+    private contract: Contract,
+    private onOutcome: (outcome: SessionOutcome) => void,
+  ) {
     this.shellEl = document.createElement('div')
     this.shellEl.className = 'shell'
     root.appendChild(this.shellEl)
 
-    this.rng = mulberry32(state.seed + 1)
-    this.target = generateTarget(mulberry32(state.seed + 3))
+    // Every run is seeded off the chosen contract as well as the session
+    // seed, so the same job always plays the same way under ?seed=.
+    this.rng = mulberry32(state.seed + hashSeed(contract.id))
+    this.target = contract.facts
     this.content = new ContentEngine(state.seed, this.target)
     this.counterHack = new CounterHackDirector(mulberry32(state.seed + 4))
     this.processSpawner = new ProcessSpawnDirector(mulberry32(state.seed + 6))
@@ -110,9 +138,9 @@ export class Shell {
     this.layers = new LayerSystem(state)
     this.windows = new WindowManager(this.shellEl, mulberry32(state.seed + 2))
 
-    new Terminal(this.shellEl)
-    new CrtOverlay(this.shellEl, state.seed)
-    new Prompt(this.shellEl, {
+    this.terminal = new Terminal(this.shellEl)
+    this.crt = new CrtOverlay(this.shellEl, state.seed)
+    this.prompt = new Prompt(this.shellEl, {
       onKey: (char) => this.handleKey(char),
       onSubmit: (line) => this.handleSubmit(line),
       // A finished generated command prints to the terminal as if it ran,
@@ -127,7 +155,7 @@ export class Shell {
       },
       nextCommand: () => this.content.line('shell', 'cmd'),
     })
-    new Hud(this.shellEl, state, () => this.layers.tension)
+    this.hud = new Hud(this.shellEl, state, () => this.layers.tension)
     this.objective = new ObjectiveBar(this.shellEl)
 
     this.director = new Director(
@@ -147,80 +175,49 @@ export class Shell {
       this.bindBoardOffset()
     }
 
-    store.on('tick', ({ dt }) => this.onTick(dt))
+    // Keep the unsubscribe. A session is now started and torn down
+    // repeatedly from the dashboard, and a leaked tick subscriber would
+    // mean the second run ticks twice per frame and the third three times.
+    this.offTick = store.on('tick', ({ dt }) => this.onTick(dt))
 
     clock.start()
+    this.scoreAtStart = state.score
     this.runBootSequence()
 
-    // Seed the board immediately so there is something to act on the
-    // instant the page loads -- no empty screen, ever.
-    this.director.spawn()
-    this.director.spawn()
-    this.director.spawn()
+    // The contract is already chosen on the dashboard, so the run opens
+    // straight onto a live board and a stated objective -- no target prompt.
+    this.applyContractIdentity()
+
+    for (let i = 0; i < this.layers.current.panelFloor; i++) this.director.spawn()
     this.refreshTarget()
-
-    // The URL prompt appears OVER the already-running board, never gating
-    // it -- see ui/startOverlay.ts's header comment for why that matters.
-    this.promptForTarget()
   }
 
   /**
-   * Ask what to hack next. Used for the opening run and again after every
-   * completed breach, so finishing a contract loops back to a real choice
-   * of target instead of silently rolling into another random one.
+   * Paint the run with the chosen contract: brand palette, dossier window,
+   * and the job as the standing objective.
    */
-  private promptForTarget(isNewContract = false): void {
-    new StartOverlay(this.shellEl, {
-      title: isNewContract ? 'CONTRACT COMPLETE -- SELECT NEXT TARGET' : 'SELECT TARGET',
-      onSubmit: (url) => this.beginRealTarget(url),
-      onSkip: () => {
-        /* keep the fictional target already generated for this contract */
-      },
-    })
-  }
-
-  /**
-   * Point the current run at a real site. Applies instantly from tier-0
-   * (URL text only -- org/domain/subnet, a hashed pseudo-brand color) so
-   * there is no wait, then quietly re-applies again if tier-1 (real page
-   * data, sim/recon.ts's relay chain) resolves with something better. If
-   * every relay fails -- offline, blocked, whatever -- that second call
-   * simply never happens and the tier-0 result stands; nothing here needs
-   * to know or care which one it got.
-   */
-  private beginRealTarget(url: string): void {
-    const tierZero = reconTierZero(url)
-    this.targetSite = new TargetSitePanel(this.windows)
-    this.targetSite.setDepth(this.layers.current.id)
-    this.applyRecon(tierZero)
-    reconLive(url, tierZero)
-      .then((live) => {
-        if (live.live) this.applyRecon(live)
-      })
-      .catch(() => {
-        /* reconLive never rejects, but belt-and-braces: never surface a network error to the player */
-      })
-  }
-
-  private applyRecon(recon: ReconResult): void {
-    this.recon = recon
-    this.target = recon.facts
-    this.content.setFacts(recon.facts)
-    this.renderStatusLeft()
-    this.targetSite?.update(recon)
-
-    this.activePalettes = brandLayerPalettes(recon.brandColor)
+  private applyContractIdentity(): void {
+    this.content.setFacts(this.contract.facts)
+    this.activePalettes = brandLayerPalettes(this.contract.brandColor)
     applyLayerPalette(this.activePalettes[this.layers.current.id] ?? this.layers.current.palette)
     applyLayerSkin(this.layers.current.id)
+    this.renderStatusLeft()
+
+    this.targetSite = new TargetSitePanel(this.windows)
+    this.targetSite.setDepth(this.layers.current.id)
+    this.targetSite.update(dossierFor(this.contract))
 
     store.emit('terminal:line', {
-      text: recon.live
-        ? `>> TARGET ACQUIRED :: ${recon.facts.org} (${recon.facts.domain}) -- live recon complete`
-        : `>> TARGET LOCKED :: ${recon.facts.org} (${recon.facts.domain})`,
-      tone: 'success',
+      text: `>> CONTRACT :: ${this.contract.facts.org} (${this.contract.facts.domain}) -- TIER ${this.contract.tier}`,
+      tone: 'system',
       speed: 2,
     })
+    store.emit('terminal:line', { text: `>> JOB :: ${this.contract.job.brief}`, tone: 'success', speed: 2 })
+    this.objective.setJob(this.contract.job.brief)
   }
+
+
+
 
   /**
    * Mobile input. The desktop loop is driven entirely by the keyboard,
@@ -258,6 +255,57 @@ export class Shell {
     if (typeof ResizeObserver === 'function') new ResizeObserver(apply).observe(hud)
     window.addEventListener('resize', apply)
     window.addEventListener('orientationchange', () => setTimeout(apply, 120))
+  }
+
+  /**
+   * Tear the session down completely.
+   *
+   * The tick unsubscribe is the critical part: `store.on` returns an
+   * unsubscribe that the old always-running Shell never needed and simply
+   * dropped. Now that a session is created and discarded once per contract,
+   * dropping it would leave a live subscriber per run -- the second session
+   * would tick twice a frame and the third three times, so panels would
+   * decay and heat would climb at multiples of the intended rate.
+   *
+   * Pending timers matter for the same reason: a breakthrough or finale
+   * callback firing after the board is gone would touch dead DOM.
+   */
+  destroy(): void {
+    if (this.destroyed) return
+    this.destroyed = true
+    this.offTick?.()
+    this.offTick = null
+    for (const t of this.pending) clearTimeout(t)
+    this.pending = []
+    this.lockout?.destroy()
+    this.lockout = null
+    this.director.clearAll()
+    this.windows.closeAll()
+    this.terminal.destroy()
+    this.crt.destroy()
+    this.prompt.destroy()
+    this.hud.destroy()
+    clock.stop()
+    this.shellEl.remove()
+  }
+
+  /** setTimeout that is cancelled by destroy() and never runs on a dead session. */
+  private later(fn: () => void, ms: number): void {
+    const id = setTimeout(() => {
+      if (this.destroyed) return
+      fn()
+    }, ms)
+    this.pending.push(id)
+  }
+
+  /** Report the run's result to the App exactly once. */
+  private finishSession(kind: SessionOutcome['kind']): void {
+    if (this.destroyed) return
+    this.onOutcome({
+      kind,
+      deepestLayer: this.deepestThisRun,
+      scoreEarned: Math.max(0, Math.floor(this.state.score - this.scoreAtStart)),
+    })
   }
 
   /** Mobile only -- no-op on the desktop board, which doesn't scroll. */
@@ -303,7 +351,16 @@ export class Shell {
     bar.className = 'statusbar'
     this.statusLeft = document.createElement('span')
     this.statusRight = document.createElement('span')
-    bar.append(this.statusLeft, this.statusRight)
+
+    // A way out of a contract that has gone badly. Without this the only
+    // exit is finishing or being burned, which strands a player who took a
+    // tier-5 job they can't hold.
+    const abort = document.createElement('button')
+    abort.className = 'statusbar__abort'
+    abort.textContent = 'ABORT [ESC]'
+    abort.addEventListener('click', () => this.abortContract())
+
+    bar.append(this.statusLeft, abort, this.statusRight)
     shellEl.appendChild(bar)
     this.renderStatusRight()
     this.renderStatusLeft()
@@ -351,6 +408,11 @@ export class Shell {
 
   private bindModeHotkey(): void {
     window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        this.abortContract()
+        return
+      }
       if (e.key !== 'Tab') return
       e.preventDefault()
       this.cycleMode()
@@ -967,7 +1029,7 @@ export class Shell {
       speed: 1,
     })
     this.showEndingBanner(verdict)
-    setTimeout(() => this.startNewContract(), 4200)
+    this.endContract('completed')
   }
 
   private showEndingBanner(verdict: string): void {
@@ -991,42 +1053,21 @@ export class Shell {
     setTimeout(() => el.remove(), 3800)
   }
 
-  /** New org, fresh board, same score -- keeps the toy going instead of ending at a wall. */
-  private startNewContract(): void {
-    this.contractCount += 1
-    this.target = generateTarget(this.rng)
-    // A fresh numeric seed per contract so generated text doesn't replay
-    // identically -- reusing state.seed here would restart the exact same
-    // content stream.
-    this.content = new ContentEngine(this.state.seed + this.contractCount * 10_000, this.target)
-    // A finished real-site run rolls into a fresh fictional one -- clear
-    // the brand palette/recon data so the new contract repaints with the
-    // generic per-layer colors instead of carrying the old site's brand.
-    this.activePalettes = null
-    this.recon = null
-    this.targetSite?.close()
-    this.targetSite = null
-    this.renderStatusLeft()
+  /**
+   * The contract is over -- hand control back to the dashboard.
+   *
+   * Replaces the old in-session "roll straight into another random org"
+   * loop. A run is now a bounded job with an outcome, and choosing the next
+   * one happens on the contract board.
+   */
+  /** Bail out of the current contract and go back to the dashboard. */
+  private abortContract(): void {
+    if (this.destroyed) return
+    store.emit('terminal:line', { text: '>> SESSION ABORTED -- disconnecting', tone: 'warning', speed: 0 })
+    this.finishSession('aborted')
+  }
 
-    this.layers.restart()
-    this.heat.resetAfterCountermeasure(10)
-    this.inFinale = false
-    applyLayerPalette(this.layers.current.palette)
-    applyLayerSkin(this.layers.current.id)
-
-    store.emit('terminal:line', {
-      text: `>> NEW CONTRACT :: ${this.target.org} (${this.target.domain})`,
-      tone: 'system',
-      speed: 2,
-    })
-    this.objective.set(`${this.layers.current.title}: ${this.layers.current.modifierText}`)
-
-    for (let i = 0; i < this.layers.current.panelFloor; i++) this.director.spawn()
-    this.refreshTarget()
-
-    // Finishing a breach earns the choice of what to hit next -- a new URL
-    // or another random org -- rather than being silently handed one.
-    this.lockoutDirector.rearm(this.elapsedMs, 15_000)
-    this.promptForTarget(true)
+  private endContract(kind: SessionOutcome['kind'], delayMs = 4200): void {
+    this.later(() => this.finishSession(kind), delayMs)
   }
 }

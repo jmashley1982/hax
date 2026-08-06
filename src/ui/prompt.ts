@@ -99,5 +99,6 @@ export class Prompt {
   destroy(): void {
     window.removeEventListener('keydown', this.handleKeydown)
     if (this.clearTimer) clearTimeout(this.clearTimer)
+    this.el.remove()
   }
 }

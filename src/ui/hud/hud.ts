@@ -8,6 +8,7 @@ import { LAYER_ORDER, type GameState } from '@/core/state'
  * what you do and pays off in a breakthrough.
  */
 export class Hud {
+  private off: (() => void) | null = null
   private el: HTMLElement
   private layerValue: HTMLElement
   private breachFill: HTMLElement
@@ -81,7 +82,7 @@ export class Hud {
     mountPoint.appendChild(this.el)
 
     this.render()
-    store.on('tick', () => this.render())
+    this.off = store.on('tick', () => this.render())
   }
 
   private render(): void {
@@ -103,5 +104,11 @@ export class Hud {
     this.heatFill.style.width = `${heat}%`
     this.heatFill.classList.toggle('is-warn', heat >= 55 && heat < 88)
     this.heatFill.classList.toggle('is-critical', heat >= 88)
+  }
+
+  destroy(): void {
+    this.off?.()
+    this.off = null
+    this.el.remove()
   }
 }

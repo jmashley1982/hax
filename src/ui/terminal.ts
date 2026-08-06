@@ -31,6 +31,8 @@ const CATCH_UP_THRESHOLD = 14
 interface QueuedLine extends TerminalLine {}
 
 export class Terminal {
+  /** Store unsubscribes -- a session is torn down and rebuilt per contract, so these must not outlive it. */
+  private offs: Array<() => void> = []
   private root: HTMLElement
   private backlog: HTMLElement
   private queue: QueuedLine[] = []
@@ -46,8 +48,8 @@ export class Terminal {
     this.root.appendChild(this.backlog)
     mountPoint.appendChild(this.root)
 
-    store.on('terminal:line', (line) => this.enqueue(line))
-    store.on('terminal:clear', () => this.clear())
+    this.offs.push(store.on('terminal:line', (line) => this.enqueue(line)))
+    this.offs.push(store.on('terminal:clear', () => this.clear()))
   }
 
   enqueue(line: TerminalLine): void {
@@ -125,5 +127,11 @@ export class Terminal {
 
   private scrollToBottom(): void {
     this.root.scrollTop = this.root.scrollHeight
+  }
+
+  destroy(): void {
+    for (const off of this.offs) off()
+    this.offs = []
+    this.root.remove()
   }
 }

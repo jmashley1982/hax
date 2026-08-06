@@ -250,10 +250,6 @@
   height: 210px;
 }
 
-[data-layout='mobile'] .start-overlay__box {
-  width: min(92vw, 360px);
-}
-
 [data-layout='mobile'] .ending-banner__title {
   font-size: 26px;
 }

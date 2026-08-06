@@ -1,7 +1,7 @@
 import { createInitialState } from '@/core/state'
 import { initLayoutMode } from '@/core/device'
 import { initTheme, restoreThemeIfSaved, applyLayerSkin } from '@/themes/themes'
-import { Shell } from '@/ui/shell'
+import { App } from '@/app'
 
 import '@/styles/base.css'
 import '@/styles/terminal.css'
@@ -12,6 +12,7 @@ import '@/styles/hud.css'
 import '@/styles/panels.css'
 import '@/styles/target.css'
 import '@/styles/layers.css'
+import '@/styles/dashboard.css'
 import '@/styles/lockout.css'
 // Last, so its [data-layout='mobile'] rules win over the desktop defaults
 // they override without needing !important on every declaration.
@@ -37,4 +38,4 @@ initLayoutMode()
 // layer with no visual identity of its own.
 applyLayerSkin(state.layer)
 
-new Shell(root, state)
+new App(root, state)

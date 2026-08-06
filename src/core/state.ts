@@ -30,7 +30,14 @@ export interface GameState {
   theme: ThemeId
   layer: LayerId
   heat: number // 0..100, detection meter
+  /** 0..100, the player's OWN machine's security posture. Heat is how much they notice you; this is how intact you are. */
+  integrity: number
   score: number
+  /** Operator handle, set on the dashboard and used by in-fiction messages. */
+  handle: string
+  /** Career totals, kept across contracts and persisted. */
+  contractsRun: number
+  deepestLayer: LayerId
   missionId: string | null
   objectiveId: string | null
   filmMode: boolean
@@ -49,7 +56,11 @@ export function createInitialState(seedLabel?: string): GameState {
     theme: 'phosphor',
     layer: 'surface',
     heat: 0,
+    integrity: 100,
     score: 0,
+    handle: 'operator',
+    contractsRun: 0,
+    deepestLayer: 'surface',
     missionId: null,
     objectiveId: null,
     filmMode: false,
@@ -82,6 +93,33 @@ export function loadState(): GameState | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Apply the persisted *career and settings* fields onto a fresh state.
+ *
+ * Deliberately partial: seed, layer, heat and integrity are per-run and must
+ * start clean, while handle/theme/mode/score/totals carry across sessions.
+ *
+ * Every field is individually guarded because a save written before these
+ * fields existed (which includes any browser that has already run this game)
+ * parses fine but leaves them `undefined` -- and `undefined` score renders
+ * as "NaN" and `undefined` handle breaks the in-fiction messages that
+ * address the player by name.
+ */
+export function applySavedCareer(state: GameState): void {
+  const saved = loadState()
+  if (!saved) return
+  if (typeof saved.handle === 'string' && saved.handle.trim()) state.handle = saved.handle
+  if (typeof saved.score === 'number' && Number.isFinite(saved.score)) state.score = saved.score
+  if (typeof saved.contractsRun === 'number' && Number.isFinite(saved.contractsRun)) {
+    state.contractsRun = saved.contractsRun
+  }
+  if (typeof saved.deepestLayer === 'string' && LAYER_ORDER.includes(saved.deepestLayer)) {
+    state.deepestLayer = saved.deepestLayer
+  }
+  if (saved.mode) state.mode = saved.mode
+  if (saved.theme) state.theme = saved.theme
 }
 
 export function clearSavedState(): void {

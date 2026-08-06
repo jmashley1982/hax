@@ -46,3 +46,27 @@
   margin-right: 0.4rem;
   vertical-align: -1px;
 }
+
+/* The way out of a contract. Lives in the status strip so it is always
+   reachable but never competes with the board for attention. */
+.statusbar__abort {
+  pointer-events: auto;
+  background: transparent;
+  border: 1px solid var(--panel-edge);
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.statusbar__abort:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+[data-layout='mobile'] .statusbar__abort {
+  min-height: 28px;
+  padding: 2px 10px;
+}
