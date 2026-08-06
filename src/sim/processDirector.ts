@@ -32,8 +32,10 @@ const LAYER_DENSITY: Record<LayerId, number> = {
  */
 export function burstSize(layer: LayerId, rng: Rng): number {
   const d = LAYER_DENSITY[layer]
-  if (d >= 0.9) return rng() < 0.45 ? 3 : 2
-  if (d >= 0.6) return rng() < 0.5 ? 2 : 1
+  // Halved from 3/2 and 2/1: combined with camera popups, hostile windows
+  // and the task panels, the old burst put ~15 windows on screen at depth
+  // and made the board unusable rather than hectic.
+  if (d >= 0.9) return rng() < 0.35 ? 2 : 1
   return 1
 }
 
@@ -51,8 +53,8 @@ export class ProcessSpawnDirector {
   tick(elapsedMs: number, layer: LayerId, tension: number): boolean {
     if (elapsedMs < this.nextAt) return false
     const intensity = Math.min(1, LAYER_DENSITY[layer] * 0.7 + tension * 0.3)
-    const lo = Math.max(320, 3600 - intensity * 3100)
-    const hi = Math.max(lo + 260, 6200 - intensity * 4900)
+    const lo = Math.max(900, 6200 - intensity * 4200)
+    const hi = Math.max(lo + 600, 11000 - intensity * 6500)
     this.nextAt = elapsedMs + int(this.rng, lo, hi)
     return true
   }

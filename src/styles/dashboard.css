@@ -64,12 +64,19 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-height: 0;
+  /* Never shrink below the content. These are flex items in a column, and
+     the default flex-shrink:1 (plus min-height:0) let a full OPERATOR box
+     collapse under its own stats -- INTEGRITY rendered underneath the
+     SETTINGS box and the THEME button escaped its border, which is the
+     "layout gets wonky after a bit" report. Only --grow boxes flex. */
+  flex: 0 0 auto;
 }
 
-/* The box that should absorb leftover height in its column. */
+/* The box that should absorb leftover height in its column. min-height:0
+   belongs here and only here, so its inner scroller can actually scroll. */
 .dash__box--grow {
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 .dash__box-title {
@@ -364,4 +371,136 @@
 [data-layout='mobile'] .contract__job {
   grid-area: job;
   text-align: right;
+}
+
+/* ============================================================
+   DEBRIEF -- the post-contract results screen.
+   Dismissed by the player, never on a timer: a results screen you
+   can miss is the bug this was written to fix.
+   ============================================================ */
+
+.debrief {
+  position: absolute;
+  inset: 0;
+  z-index: 2600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  background: rgba(0, 0, 0, 0.86);
+  animation: debrief-in 260ms ease-out;
+}
+
+@keyframes debrief-in {
+  from { opacity: 0; transform: scale(0.97); }
+}
+
+.debrief__box {
+  position: relative;
+  width: min(94vw, 540px);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 1.4rem 1.4rem 1.2rem;
+  border: 1px solid var(--fg);
+  background: var(--panel);
+  box-shadow: 0 0 60px -10px var(--glow), inset 0 0 80px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  scrollbar-width: none;
+}
+
+.debrief__box::-webkit-scrollbar { display: none; }
+
+.debrief--loss .debrief__box { border-color: var(--danger); box-shadow: 0 0 60px -10px var(--danger), inset 0 0 80px rgba(0,0,0,0.6); }
+.debrief--neutral .debrief__box { border-color: var(--panel-edge); box-shadow: none; }
+
+.debrief__title {
+  font-size: clamp(22px, 4vw, 34px);
+  letter-spacing: 0.16em;
+  color: var(--fg-bright);
+  text-shadow: 0 0 18px var(--glow);
+}
+
+.debrief--loss .debrief__title { color: var(--danger); text-shadow: 0 0 18px var(--danger); }
+
+.debrief__sub {
+  margin-top: 0.3rem;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.debrief__grade {
+  margin: 0.6rem 0;
+  font-size: 46px;
+  line-height: 1;
+  color: var(--accent-2);
+  text-shadow: 0 0 20px var(--glow);
+}
+
+.debrief__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.9rem 0;
+  text-align: left;
+  font-size: 11px;
+}
+
+.debrief__row {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 0.6rem;
+  color: var(--fg);
+}
+
+.debrief__row-label {
+  color: var(--fg-dim);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  padding-top: 1px;
+}
+
+.debrief__payout {
+  border-top: 1px solid var(--panel-edge);
+  padding-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 11px;
+}
+
+.debrief__payout-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--fg-dim);
+}
+
+.debrief__payout-row.is-total {
+  color: var(--ok);
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  margin-top: 0.3rem;
+  text-shadow: 0 0 10px var(--glow);
+}
+
+.debrief__continue {
+  margin-top: 1.1rem;
+  width: 100%;
+  min-height: 48px;
+  background: transparent;
+  border: 1px solid var(--fg);
+  color: var(--fg-bright);
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  cursor: pointer;
+}
+
+.debrief__continue:hover,
+.debrief__continue:focus-visible {
+  background: color-mix(in srgb, var(--fg) 14%, transparent);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .debrief { animation: none; }
 }

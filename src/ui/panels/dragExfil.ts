@@ -2,6 +2,7 @@ import { hex, int, pick } from '@/core/rng'
 import type { WindowManager } from '@/ui/windows/manager'
 import { TaskPanel, type PanelContext } from './panel'
 import { isMobileLayout } from '@/core/device'
+import { beginInteraction, endInteraction } from '@/core/interaction'
 
 /**
  * DRAG EXFIL -- pull files off the target and drop them in your local vault
@@ -158,6 +159,17 @@ export class DragExfilPanel extends TaskPanel {
     e.preventDefault()
     this.dragging = entry
     entry.el.classList.add('is-dragging')
+    beginInteraction()
+    // Lift the whole panel while dragging so nothing can render between the
+    // file and the vault it's headed for.
+    this.win.el.classList.add('is-drag-host')
+    // Capture so the drag survives the cursor crossing another window or
+    // leaving the viewport; guarded because it throws on a dead pointer.
+    try {
+      entry.el.setPointerCapture(e.pointerId)
+    } catch {
+      /* non-fatal -- the window-level listeners below still drive the drag */
+    }
 
     this.ghost = document.createElement('div')
     this.ghost.className = 'dexfil__ghost'
@@ -174,11 +186,26 @@ export class DragExfilPanel extends TaskPanel {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
+      window.removeEventListener('blur', cancel)
+      this.win.el.classList.remove('is-drag-host')
+      endInteraction()
       this.endDrag(ev.clientX, ev.clientY)
+    }
+    // A lost pointer (window blur, browser taking the gesture) must end the
+    // drag too, or the ghost follows the cursor forever.
+    const cancel = (): void => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      window.removeEventListener('blur', cancel)
+      this.win.el.classList.remove('is-drag-host')
+      endInteraction()
+      this.endDrag(-1, -1)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
+    window.addEventListener('blur', cancel)
   }
 
   private moveGhost(x: number, y: number): void {

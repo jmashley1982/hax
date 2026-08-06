@@ -36,6 +36,7 @@ import { spawnCamWindow } from './windows/camWindow'
 import { preloadAvailability } from '@/media/videoRegistry'
 import { TouchInput } from './touch'
 import { isMobileLayout } from '@/core/device'
+import { isInteracting, resetInteraction } from '@/core/interaction'
 import { BruteForcePanel } from './panels/bruteForce'
 import { TraceDefensePanel } from './panels/traceDefense'
 import { PANEL_LABELS } from './panels/registry'
@@ -52,6 +53,9 @@ export interface SessionOutcome {
   kind: 'completed' | 'burned' | 'aborted'
   deepestLayer: LayerId
   scoreEarned: number
+  /** How intact the workstation was at the end -- feeds the debrief grade. */
+  integrityLeft: number
+  elapsedMs: number
 }
 
 /**
@@ -110,6 +114,7 @@ export class Shell {
   private destroyed = false
   private scoreAtStart = 0
   private deepestThisRun: LayerId = 'surface'
+  private abortPrompt: import('./windows/window').Win | null = null
   /**
    * Child components are held so destroy() can unhook them. Each of these
    * subscribes to the store or to window events, and removing only their
@@ -193,6 +198,9 @@ export class Shell {
     // Keep the unsubscribe. A session is now started and torn down
     // repeatedly from the dashboard, and a leaked tick subscriber would
     // mean the second run ticks twice per frame and the third three times.
+    // A pointer lost during the previous session must not leave ambient
+    // spawning wedged off for the next one.
+    resetInteraction()
     this.offTick = store.on('tick', ({ dt }) => this.onTick(dt))
 
     clock.start()
@@ -325,6 +333,8 @@ export class Shell {
       kind,
       deepestLayer: this.deepestThisRun,
       scoreEarned: Math.max(0, Math.floor(this.state.score - this.scoreAtStart)),
+      integrityLeft: this.state.integrity,
+      elapsedMs: this.elapsedMs,
     })
   }
 
@@ -378,7 +388,7 @@ export class Shell {
     const abort = document.createElement('button')
     abort.className = 'statusbar__abort'
     abort.textContent = 'ABORT [ESC]'
-    abort.addEventListener('click', () => this.abortContract())
+    abort.addEventListener('click', () => this.confirmAbort())
 
     bar.append(this.statusLeft, abort, this.statusRight)
     shellEl.appendChild(bar)
@@ -430,7 +440,7 @@ export class Shell {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        this.abortContract()
+        this.confirmAbort()
         return
       }
       if (e.key !== 'Tab') return
@@ -453,6 +463,8 @@ export class Shell {
     this.targetPanel?.setTargeted(false)
     this.targetPanel = panel
     panel?.setTargeted(true)
+    // Ambient windows steer around whatever the player is working on.
+    this.windows.setAvoidRect(panel ? panel.element.getBoundingClientRect() : null)
     this.renderObjective()
   }
 
@@ -635,7 +647,7 @@ export class Shell {
     // timer that could eject them for a wave they physically cannot see.
     if (this.lockout) return
 
-    this.director.tick(dt)
+    this.director.tick(dt, !isInteracting())
     for (const panel of this.director.activePanels) {
       if (panel instanceof BruteForcePanel) panel.tickDecay(dt)
       else if (panel instanceof TraceDefensePanel) panel.tickPings(dt)
@@ -703,7 +715,11 @@ export class Shell {
       // decorative -- never registered with the Director or added to any
       // input-routing list, so it can never steal a keystroke from an
       // actual task panel.
-      if (this.processSpawner.tick(this.elapsedMs, this.state.layer, this.layers.tension)) {
+      // Nothing ambient may open while the player is mid-drag, or while a
+      // reverse hack already has the screen full of hostiles. Both were
+      // producing the "windows pop up over it as you're using it" problem.
+      const boardBusy = isInteracting() || !!this.reverseHack?.active
+      if (!boardBusy && this.processSpawner.tick(this.elapsedMs, this.state.layer, this.layers.tension)) {
         // Deep layers open two or three at once -- that burst is what makes
         // the background read as constant churn rather than the occasional
         // window.
@@ -714,7 +730,7 @@ export class Shell {
         // Camera feeds ride the same cadence but land far less often, and
         // get much more likely as you approach building control -- owning
         // the cameras is the payoff of getting physical.
-        const camChance = 0.1 + LAYER_ORDER.indexOf(this.state.layer) * 0.07
+        const camChance = 0.05 + LAYER_ORDER.indexOf(this.state.layer) * 0.04
         if (this.rng() < camChance) {
           spawnCamWindow({
             manager: this.windows,
@@ -1049,6 +1065,7 @@ export class Shell {
     this.setTarget(null)
 
     const next = this.layers.breakthrough()
+    this.deepestThisRun = next.id
     this.showBreakthroughCard(next, depthIndex, bonus)
     this.breakthroughGraceUntil = this.elapsedMs + BREAKTHROUGH_GRACE_MS
 
@@ -1220,6 +1237,31 @@ export class Shell {
    * loop. A run is now a bounded job with an outcome, and choosing the next
    * one happens on the contract board.
    */
+  /**
+   * Escape is a reflex key -- players hit it to dismiss popups. Wiring it
+   * straight to "end the contract" meant one stray press silently threw
+   * away the run and dumped you on the menu, which read as the game
+   * crashing. It asks first now.
+   */
+  private confirmAbort(): void {
+    if (this.destroyed || this.abortPrompt) return
+    const win = this.windows.spawn(
+      { title: 'ABORT CONTRACT?', modal: true, closable: false, decor: 'danger' },
+      'center',
+    )
+    this.abortPrompt = win
+    const body = document.createElement('div')
+    const p = document.createElement('p')
+    p.textContent = `Disconnect from ${this.target.org} and abandon this job? Progress on this contract is lost.`
+    body.appendChild(p)
+    win.setBody(body)
+    win.addButtonRow([
+      { label: 'STAY IN', onClick: () => { this.abortPrompt = null; win.close() } },
+      { label: 'ABORT', onClick: () => { this.abortPrompt = null; win.close(); this.abortContract() } },
+    ])
+    win.onClose(() => { this.abortPrompt = null })
+  }
+
   /** Bail out of the current contract and go back to the dashboard. */
   private abortContract(): void {
     if (this.destroyed) return

@@ -6,7 +6,7 @@ import { Win, type WindowOptions } from './window'
  * background process windows and transient dialogs. Task panels are pinned
  * and never counted against this.
  */
-const MAX_TRANSIENT = 6
+const MAX_TRANSIENT = 4
 
 export type Placement = 'cascade' | 'center' | 'random'
 
@@ -73,7 +73,10 @@ export class WindowManager {
     // panels alone (5-7 of them at the deep layers) already exceeded it --
     // so every background process window was culled the instant it opened,
     // exactly where the churn is supposed to be heaviest.
-    const evictable = this.windows.filter((w) => !w.isModal && !w.isPinned)
+    // Never evict a window the player is currently holding. Eviction is a
+    // timer; a drag is a person. Closing a window mid-drag was one of the
+    // three ways the cursor ended up stuck to a dead element.
+    const evictable = this.windows.filter((w) => !w.isModal && !w.isPinned && !w.isDragging)
     for (let i = 0; i <= evictable.length - MAX_TRANSIENT; i++) {
       evictable[i]?.close()
     }
@@ -100,6 +103,24 @@ export class WindowManager {
     }
   }
 
+  /**
+   * A rect ambient windows should try not to land on -- set by the Shell to
+   * the panel the player is currently working. Without this, background
+   * windows spawn straight on top of the thing being used, which is exactly
+   * the "windows pop up over it as you're using" complaint.
+   */
+  private avoidRect: DOMRect | null = null
+
+  setAvoidRect(rect: DOMRect | null): void {
+    this.avoidRect = rect
+  }
+
+  private overlapsAvoid(x: number, y: number, w = 300, h = 210): boolean {
+    const r = this.avoidRect
+    if (!r) return false
+    return x < r.right && x + w > r.left && y < r.bottom && y + h > r.top
+  }
+
   private computePosition(placement: Placement): { x: number; y: number } {
     const vw = Math.max(window.innerWidth, 480)
     const vh = Math.max(window.innerHeight, 360)
@@ -119,16 +140,23 @@ export class WindowManager {
       const fieldTop = 90
       const cols = Math.max(1, Math.floor((vw - fieldLeft - 24) / PANEL_W))
       const rows = Math.max(1, Math.floor((vh - fieldTop - 90) / PANEL_H))
-      const slot = this.cascadeIndex % (cols * rows)
-      this.cascadeIndex += 1
-      const col = slot % cols
-      const row = Math.floor(slot / cols)
       const spreadW = (vw - fieldLeft - PANEL_W - 24) / Math.max(1, cols - 1)
       const spreadH = (vh - fieldTop - PANEL_H - 90) / Math.max(1, rows - 1)
-      return {
-        x: fieldLeft + col * (cols > 1 ? spreadW : 0) + int(this.rng, -14, 14),
-        y: fieldTop + row * (rows > 1 ? spreadH : 0) + int(this.rng, -14, 14),
+      // Try a few slots before settling, so an ambient window steps around
+      // the panel in use instead of landing on it.
+      let best = { x: 0, y: 0 }
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const slot = this.cascadeIndex % (cols * rows)
+        this.cascadeIndex += 1
+        const col = slot % cols
+        const row = Math.floor(slot / cols)
+        best = {
+          x: fieldLeft + col * (cols > 1 ? spreadW : 0) + int(this.rng, -14, 14),
+          y: fieldTop + row * (rows > 1 ? spreadH : 0) + int(this.rng, -14, 14),
+        }
+        if (!this.overlapsAvoid(best.x, best.y)) break
       }
+      return best
     }
     this.cascadeIndex = (this.cascadeIndex + 1) % 8
     return { x: 80 + this.cascadeIndex * 28, y: 100 + this.cascadeIndex * 24 }

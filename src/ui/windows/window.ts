@@ -1,4 +1,5 @@
 import { isMobileLayout } from '@/core/device'
+import { beginInteraction, endInteraction } from '@/core/interaction'
 
 export interface WindowButton {
   label: string
@@ -31,6 +32,9 @@ export class Win {
   readonly el: HTMLElement
   private bodyEl: HTMLElement
   private closed = false
+  /** True while this window's title bar is being dragged -- eviction must not take it. */
+  private dragging = false
+  private endDrag: (() => void) | null = null
   private onCloseCallbacks: Array<() => void> = []
 
   constructor(private opts: WindowOptions) {
@@ -118,14 +122,40 @@ export class Win {
     return this.closed
   }
 
+  /** True while the player is holding this window's title bar. */
+  get isDragging(): boolean {
+    return this.dragging
+  }
+
   close(): void {
     if (this.closed) return
     this.closed = true
+    // A window destroyed mid-drag would otherwise leave its move listener
+    // running against a detached node, with the cursor still "holding" it.
+    this.endDrag?.()
     this.el.classList.add('is-closing')
     setTimeout(() => this.el.remove(), 170)
     for (const fn of this.onCloseCallbacks) fn()
   }
 
+  /**
+   * Title-bar dragging.
+   *
+   * The original version bound pointermove/pointerup on `window` and
+   * nothing else, which left three ways to end up with a window glued to
+   * the cursor forever ("the mouse gets stuck on a window and wont let it
+   * go"):
+   *   - `pointercancel` fires instead of `pointerup` (the browser takes the
+   *     pointer back), so the cleanup never runs;
+   *   - the release happens outside the document;
+   *   - the window is CLOSED mid-drag -- transient windows are evicted on a
+   *     timer, so the element under your cursor can be destroyed while you
+   *     are still holding it, and the move listener kept running against a
+   *     detached node.
+   *
+   * Now the pointer is captured, every terminal path is handled, and the
+   * drag detaches if the window dies underneath it.
+   */
   private bindDrag(handle: HTMLElement): void {
     handle.addEventListener('pointerdown', (e) => {
       // In the mobile layout windows are a static scrolling column, so
@@ -141,12 +171,40 @@ export class Win {
         this.el.style.left = `${originLeft + (ev.clientX - startX)}px`
         this.el.style.top = `${originTop + (ev.clientY - startY)}px`
       }
-      const onUp = () => {
+      const endDrag = () => {
+        if (!this.dragging) return
+        this.dragging = false
+        endInteraction()
         window.removeEventListener('pointermove', onMove)
-        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointerup', endDrag)
+        window.removeEventListener('pointercancel', endDrag)
+        window.removeEventListener('blur', endDrag)
+        handle.removeEventListener('lostpointercapture', endDrag)
+        try {
+          handle.releasePointerCapture(e.pointerId)
+        } catch {
+          /* already released or the pointer is gone -- nothing to do */
+        }
       }
+
+      this.dragging = true
+      this.endDrag = endDrag
+      beginInteraction()
+      // Capture keeps move/up coming to us even if the cursor crosses an
+      // iframe or leaves the window. Guarded: it throws when the pointer is
+      // already gone, and an unguarded throw here would abort the handler
+      // before the listeners were attached, arming a drag that can't end.
+      try {
+        handle.setPointerCapture(e.pointerId)
+      } catch {
+        /* non-fatal: the drag still works, it just won't track off-window */
+      }
+
       window.addEventListener('pointermove', onMove)
-      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointerup', endDrag)
+      window.addEventListener('pointercancel', endDrag)
+      window.addEventListener('blur', endDrag)
+      handle.addEventListener('lostpointercapture', endDrag)
     })
   }
 }

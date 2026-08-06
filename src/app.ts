@@ -3,6 +3,7 @@ import { applySavedCareer, saveState, LAYER_ORDER, type GameState } from '@/core
 import { applyLayerPalette, applyLayerSkin } from '@/themes/themes'
 import { Dashboard } from '@/ui/dashboard/dashboard'
 import { Shell, type SessionOutcome } from '@/ui/shell'
+import { Debrief } from '@/ui/dashboard/debrief'
 import { layerDef } from '@/sim/layers'
 import type { Contract } from '@/sim/contracts'
 
@@ -22,6 +23,8 @@ import type { Contract } from '@/sim/contracts'
 export class App {
   private dashboard: Dashboard | null = null
   private session: Shell | null = null
+  private debrief: Debrief | null = null
+  private activeContract: Contract | null = null
 
   constructor(private root: HTMLElement, private state: GameState) {
     applySavedCareer(state)
@@ -30,6 +33,8 @@ export class App {
 
   private showDashboard(): void {
     this.teardownSession()
+    this.debrief?.destroy()
+    this.debrief = null
     // The board is the player's own machine, not a target -- reset the depth
     // skin so the dashboard doesn't inherit the last run's palette.
     this.state.layer = 'surface'
@@ -51,16 +56,47 @@ export class App {
     this.state.heat = 0
     this.state.integrity = 100
 
+    this.activeContract = contract
     this.session = new Shell(this.root, this.state, contract, (outcome) => this.endSession(outcome))
   }
 
+  /**
+   * A run always ends on the results screen, never straight back to the
+   * board. Both failure paths (burned, aborted) land here too -- an ending
+   * with no screen is indistinguishable from a crash, which is exactly how
+   * it was being read.
+   */
   private endSession(outcome: SessionOutcome): void {
     this.state.contractsRun += 1
     if (LAYER_ORDER.indexOf(outcome.deepestLayer) > LAYER_ORDER.indexOf(this.state.deepestLayer)) {
       this.state.deepestLayer = outcome.deepestLayer
     }
+
+    const contract = this.activeContract
+    this.teardownSession()
+    clock.stop()
+
+    if (!contract) {
+      saveState(this.state)
+      this.showDashboard()
+      return
+    }
+
+    this.debrief = new Debrief(this.root, {
+      contract,
+      outcome,
+      integrityLeft: outcome.integrityLeft,
+      elapsedMs: outcome.elapsedMs,
+      onContinue: () => {
+        this.debrief = null
+        saveState(this.state)
+        this.showDashboard()
+      },
+    })
+    // The tier multiplier is banked as career score here, so choosing a
+    // hard contract visibly pays more than an easy one.
+    this.state.score += this.debrief.payout
     saveState(this.state)
-    this.showDashboard()
   }
 
   private teardownSession(): void {

@@ -54,13 +54,18 @@ export class Director {
     return Math.min(7, floor + byTension)
   }
 
-  tick(dtMs: number): void {
+  /**
+   * @param canSpawn false while the player is mid-interaction (a drag).
+   *        Decay and bookkeeping still run -- only *new* panels are held
+   *        back, so a window can't appear on top of the drag in progress.
+   */
+  tick(dtMs: number, canSpawn = true): void {
     this.panels = this.panels.filter((p) => !p.isDone)
     this.spawnCooldown -= dtMs
 
     for (const p of this.panels) p.tickDecayModifier(dtMs)
 
-    if (this.panels.length < this.desiredCount && this.spawnCooldown <= 0) {
+    if (canSpawn && this.panels.length < this.desiredCount && this.spawnCooldown <= 0) {
       this.spawn()
       this.spawnCooldown = SPAWN_COOLDOWN_MS
     }
