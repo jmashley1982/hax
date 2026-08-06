@@ -1,0 +1,321 @@
+/* ============================================================
+   THE MESSENGER (ui/messenger.ts) + THE MANHUNT (ui/manhunt.ts)
+   ============================================================ */
+
+/*
+ * Docked bottom-left rather than floating: it has to be somewhere the eye
+ * can find without hunting, because the whole point is that you glance at
+ * it all game and once in a while it says something that matters.
+ */
+.msgr {
+  position: absolute;
+  left: 12px;
+  bottom: 88px;
+  z-index: 480;
+  width: 236px;
+  max-height: 40vh;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--panel-edge);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.msgr__head {
+  padding: 4px 7px;
+  border-bottom: 1px solid var(--panel-edge);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--fg-dim);
+}
+
+.msgr__roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--panel-edge);
+}
+
+.msgr__buddy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--fg-dim);
+  opacity: 0.4;
+}
+
+.msgr__buddy.is-online {
+  opacity: 1;
+  color: var(--fg);
+}
+
+.msgr__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fg-dim);
+}
+
+.msgr__buddy.is-online .msgr__dot {
+  background: var(--ok);
+  box-shadow: 0 0 5px var(--ok);
+}
+
+.msgr__log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 5px 7px;
+  color: var(--fg);
+}
+
+.msgr__line {
+  margin-bottom: 2px;
+  word-break: break-word;
+}
+
+.msgr__line--join,
+.msgr__line--part {
+  color: var(--fg-dim);
+  opacity: 0.7;
+  font-size: 9px;
+}
+
+.msgr__who {
+  color: var(--accent-2);
+}
+
+/* -- an offer on the table -- */
+
+.msgr__offer:empty {
+  display: none;
+}
+
+.msgr__offer {
+  padding: 6px 7px;
+  border-top: 1px solid var(--accent-2);
+}
+
+.msgr__offer-from {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--accent-2);
+  margin-bottom: 4px;
+}
+
+.msgr__accept {
+  width: 100%;
+  min-height: 38px;
+  background: transparent;
+  border: 1px solid var(--accent-2);
+  color: var(--accent-2);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.msgr__accept:hover {
+  background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+  color: var(--fg-bright);
+}
+
+.msgr__offer-hint {
+  margin-top: 3px;
+  font-size: 8px;
+  color: var(--fg-dim);
+}
+
+.msgr__offer-timer {
+  margin-top: 4px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.msgr__offer-timer-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--accent-2);
+}
+
+.msgr.is-urgent {
+  border-color: var(--accent-2);
+}
+
+/*
+ * An interference offer arrives while the authorities are on their way.
+ * That is the loudest thing this window will ever do, and it should be
+ * impossible to miss even with the board full.
+ */
+.msgr.is-critical {
+  border-color: var(--danger);
+  animation: msgr-critical 0.9s ease-in-out infinite;
+}
+
+.msgr.is-critical .msgr__offer {
+  border-top-color: var(--danger);
+}
+
+.msgr.is-critical .msgr__accept,
+.msgr.is-critical .msgr__offer-from {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+@keyframes msgr-critical {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 59, 59, 0); }
+  50% { box-shadow: 0 0 22px rgba(255, 59, 59, 0.65); }
+}
+
+/* ---- the manhunt ---- */
+
+.shell.is-manhunt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 545;
+  pointer-events: none;
+  box-shadow: inset 0 0 200px rgba(255, 40, 40, 0.5);
+  animation: manhunt-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes manhunt-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.manhunt-win { min-width: 260px; }
+
+.manhunt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 10px;
+}
+
+.manhunt__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.manhunt__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.manhunt__label {
+  color: var(--fg-dim);
+  letter-spacing: 0.1em;
+}
+
+.manhunt__value {
+  color: var(--fg-dim);
+  opacity: 0.6;
+  text-align: right;
+}
+
+/* A field they have worked out. Reads as damage, because it is. */
+.manhunt__value.is-revealed {
+  color: var(--danger);
+  opacity: 1;
+  font-weight: bold;
+  text-shadow: 0 0 6px var(--danger);
+}
+
+.manhunt__strip:empty { display: none; }
+
+.manhunt__strip {
+  border-top: 1px solid var(--panel-edge);
+  padding-top: 3px;
+}
+
+.manhunt__stripped {
+  font-size: 9px;
+  color: var(--danger);
+  opacity: 0.85;
+}
+
+.manhunt__eta {
+  letter-spacing: 0.1em;
+  color: var(--danger);
+}
+
+.manhunt__eta.is-close {
+  font-size: 12px;
+  animation: manhunt-eta 0.6s steps(2) infinite;
+}
+
+@keyframes manhunt-eta {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.manhunt__scrub {
+  width: 100%;
+  min-height: 42px;
+  background: transparent;
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+
+.manhunt__scrub:hover {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--fg-bright);
+}
+
+.manhunt__hint {
+  font-size: 8px;
+  color: var(--fg-dim);
+}
+
+.manhunt__mapbody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.manhunt__canvas {
+  display: block;
+  width: 240px;
+  height: 170px;
+  border: 1px solid var(--panel-edge);
+}
+
+.manhunt__mapcap {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msgr.is-critical,
+  .shell.is-manhunt::after,
+  .manhunt__eta.is-close { animation: none; }
+}
+
+/*
+ * On a phone the board is one scrolling column, so a fixed docked panel
+ * would sit on top of it. The messenger joins the column instead, pinned
+ * near the top where an offer can still be seen.
+ */
+[data-layout='mobile'] .msgr {
+  position: static;
+  width: auto;
+  max-height: 30vh;
+  margin: 0 0 8px;
+  order: -2;
+}
+
+[data-layout='mobile'] .manhunt__canvas {
+  width: 100%;
+  height: auto;
+}

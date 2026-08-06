@@ -1,6 +1,6 @@
 import { store } from '@/core/store'
 import { clock } from '@/core/clock'
-import { mulberry32, hashSeed, type Rng } from '@/core/rng'
+import { mulberry32, hashSeed, int, type Rng } from '@/core/rng'
 import { saveState, LAYER_ORDER, type GameState } from '@/core/state'
 import { InputPipeline } from '@/core/input'
 import { PLAY_MODES, PLAY_MODE_ORDER, computeProgress, type PlayModeProfile } from '@/core/progress'
@@ -46,6 +46,8 @@ import { ThreatPanel } from './panels/threatPanel'
 import { TargetSitePanel } from './panels/targetSite'
 import { applyLayerPalette, applyLayerSkin, brandLayerPalettes } from '@/themes/themes'
 import { Chain } from './chain/chain'
+import { Messenger, type Offer } from './messenger'
+import { Manhunt } from './manhunt'
 import { TokenPouch, type Token } from '@/sim/tokens'
 import type { TaskPanel } from './panels/panel'
 
@@ -129,9 +131,25 @@ export class Shell {
   private pouch = new TokenPouch()
   /** At most one interactive chain at a time -- two would just be noise. */
   private chain: Chain | null = null
-  private nextChainAt = 25_000
+  private nextChainAt = 14_000
   /** Set while a trojan bypass is burning, which suppresses their controls. */
   private bypassUntilMs = 0
+  /** The docked buddy list. Always present; occasionally saves the run. */
+  private messenger!: Messenger
+  /** Non-null while the deep-layer manhunt is running. */
+  private manhunt: Manhunt | null = null
+  private nextOfferAt = 30_000
+  /**
+   * Next roll for an unprompted reverse hack.
+   *
+   * Until now the ONLY way to be reverse-hacked was to drag a corrupted
+   * file into your own vault -- which needs a drag-exfil panel to be on
+   * the board AND the player to grab a bad file, so most runs never saw
+   * one at all, and the manhunt sitting behind it was effectively
+   * unreachable. Plan §16E always called for a low-integrity roll too;
+   * this is it.
+   */
+  private nextReverseRollAt = 40_000
   /**
    * Child components are held so destroy() can unhook them. Each of these
    * subscribes to the store or to window events, and removing only their
@@ -224,6 +242,11 @@ export class Shell {
     // mean the second run ticks twice per frame and the third three times.
     // A pointer lost during the previous session must not leave ambient
     // spawning wedged off for the next one.
+    this.messenger = new Messenger(this.shellEl, mulberry32(state.seed + 12), contract.facts.org, {
+      onAccept: (offer) => this.handleOffer(offer),
+      line: (text) => store.emit('terminal:line', { text, tone: 'normal', speed: 0 }),
+    })
+
     resetInteraction()
     this.applyDifficulty()
     this.offTick = store.on('tick', ({ dt }) => this.onTick(dt))
@@ -331,6 +354,9 @@ export class Shell {
     this.pending = []
     this.chain?.destroy()
     this.chain = null
+    this.manhunt?.destroy()
+    this.manhunt = null
+    this.messenger.destroy()
     this.pouch.clear()
     this.lockout?.destroy()
     this.lockout = null
@@ -547,7 +573,11 @@ export class Shell {
     // finale clears the board) calls this and instantly clobbers that
     // message back to whatever panel is targeted, which defeats the
     // "objective bar taken over" requirement almost as soon as it fires.
-    if (this.waveActive) return
+    // A manhunt takes the bar for the same reason and more so: during one
+    // the contract is not the objective, staying anonymous is. Letting a
+    // panel title overwrite "STAY ANONYMOUS" reads as the game not knowing
+    // what is happening to you.
+    if (this.waveActive || this.manhunt?.active) return
     if (!this.targetPanel) {
       this.objective.set('scanning for targets...')
       return
@@ -670,6 +700,7 @@ export class Shell {
     // first two are things the player *earned* the right to type, so they
     // outrank a generic keyword match.
     if (this.chain?.trySubmit(line)) return
+    if (this.messenger.trySubmit(line)) return
     const invoked = this.pouch.takeByCode(line)
     if (invoked) {
       this.spendToken(invoked)
@@ -771,6 +802,9 @@ export class Shell {
     if (this.lockout) return
 
     this.tickIdlePressure(dt)
+    this.tickOffers(dt)
+    this.tickReverseRoll()
+    this.manhunt?.tick(dt)
     this.tickChains(dt)
     this.director.tick(dt, !isInteracting())
     for (const panel of this.director.activePanels) {
@@ -831,7 +865,11 @@ export class Shell {
         this.elapsedMs,
         Math.min(100, this.state.heat + this.integrity.exposure * 40),
         this.state.layer,
-        this.inFinale || this.ejecting || this.waveActive || this.activeThreats.length > 0,
+        this.inFinale ||
+          this.ejecting ||
+          this.waveActive ||
+          !!this.manhunt?.active ||
+          this.activeThreats.length > 0,
       )
     ) {
       this.beginLockout()
@@ -1055,9 +1093,13 @@ export class Shell {
       },
       onTakeover: () => {
         this.reverseHack = null
-        // Losing the desktop fight escalates into the full-screen ceremony.
         this.integrity.damage(INTEGRITY_COST.lockout)
-        this.beginLockout()
+        // At depth, losing the desktop fight is not just another blackout:
+        // they stop trying to push you off the network and start trying to
+        // find out who you are. Shallow layers keep the old lockout, which
+        // is the right size of setback for an early mistake.
+        if (LAYER_ORDER.indexOf(this.state.layer) >= 3) this.beginManhunt()
+        else this.beginLockout()
       },
     })
   }
@@ -1191,6 +1233,12 @@ export class Shell {
    * one window in the wave ejects, not just a heat bump.
    */
   private spawnThreatWave(wave: ThreatWaveSpec): void {
+    // A manhunt owns the entire threat budget while it runs. Observed on
+    // seed hunt2: a counter-intrusion wave fired mid-manhunt, took the
+    // objective bar for itself, and then lost -- which ejected the player
+    // to SURFACE with the manhunt still on screen. Two boss-scale
+    // emergencies at once is not "hectic", it is incoherent.
+    if (this.manhunt?.active) return
     this.shellEl.classList.add('is-counter-intrusion')
     this.waveActive = true
     this.objective.set(`COUNTER-INTRUSION -- REPEL ALL ${wave.kinds.length}`)
@@ -1227,7 +1275,7 @@ export class Shell {
    * here).
    */
   private handleEjection(): void {
-    if (this.inFinale || this.ejecting) return
+    if (this.inFinale || this.ejecting || this.manhunt?.active) return
     this.ejecting = true
 
     this.director.clearAll()
@@ -1293,6 +1341,120 @@ export class Shell {
     setTimeout(() => el.remove(), 2000)
   }
 
+  // -- the manhunt: the deep-layer boss fight -----------------------------
+
+  /**
+   * They stop defending and start hunting.
+   *
+   * This is deliberately a different *kind* of thing from every other
+   * setback: the contract stops mattering, the objective becomes staying
+   * anonymous, and there are two ways out -- scrub your way clear, or have
+   * a friend on the relay misdirect the responders. The second is the
+   * payoff for having watched the messenger all game.
+   */
+  private beginManhunt(): void {
+    if (this.manhunt?.active || this.destroyed) return
+    this.director.clearAll()
+    this.setTarget(null)
+    this.objective.set(`STAY ANONYMOUS -- ${this.target.org} IS HUNTING YOU`)
+
+    // Their ETA is the difficulty knob: CASUAL gives you room to work it
+    // out, IRL barely gives you time to react.
+    const seconds = this.mode.id === 'casual' ? 95 : this.mode.id === 'leet' ? 70 : 50
+
+    this.manhunt = new Manhunt({
+      manager: this.windows,
+      mount: this.shellEl,
+      rng: this.rng,
+      org: this.target.org,
+      handle: this.state.handle,
+      etaSeconds: seconds,
+      line: (text, tone) => store.emit('terminal:line', { text, tone, speed: 0 }),
+      onEscaped: () => {
+        this.manhunt = null
+        awardScore(this.state, 600)
+        this.integrity.repair(30)
+        this.heat.add(-50)
+        store.emit('terminal:line', {
+          text: '>>>> THEY LOST YOU. Get back to work.',
+          tone: 'success',
+          speed: 2,
+        })
+        this.objective.set('BACK ON TARGET')
+        for (let i = 0; i < this.layers.current.panelFloor; i++) this.director.spawn()
+        this.refreshTarget()
+      },
+      onCaught: () => {
+        this.manhunt = null
+        store.emit('terminal:line', {
+          text: '!!!! THEY HAVE YOUR ADDRESS. PULL EVERYTHING.',
+          tone: 'danger',
+          speed: 0,
+        })
+        this.finishSession('burned')
+      },
+    })
+
+    // The one moment the messenger exists for. Offered a beat later so it
+    // arrives *after* the player has registered what is happening, rather
+    // than in the same frame as four new windows.
+    this.later(() => {
+      if (!this.manhunt?.active) return
+      this.messenger.raiseOffer('interference', true)
+    }, 4500)
+  }
+
+  /**
+   * Someone on the relay offering to help. Most offers are convenience;
+   * `interference` during a manhunt is the run.
+   */
+  private handleOffer(offer: Offer): void {
+    switch (offer.kind) {
+      case 'interference':
+        if (this.manhunt?.active) this.manhunt.applyInterference(offer.from)
+        else {
+          this.heat.add(-30)
+          store.emit('terminal:line', { text: `${offer.from} muddied the trail for you`, tone: 'success', speed: 0 })
+        }
+        break
+      case 'skeleton':
+        if (offer.token) this.grantToken(offer.token)
+        break
+      case 'heat':
+        this.heat.add(-35)
+        this.counterHack.defer(this.elapsedMs, 20_000)
+        store.emit('terminal:line', { text: `${offer.from} is making noise on the other side of their network`, tone: 'success', speed: 0 })
+        break
+      case 'repair':
+        this.integrity.repair(25)
+        store.emit('terminal:line', { text: `clean image applied -- ${offer.from} came through`, tone: 'success', speed: 0 })
+        break
+    }
+  }
+
+  /**
+   * Unsolicited help, spaced out and biased toward when it is useful.
+   *
+   * Never during a manhunt -- that one raises its own offer, and a second
+   * competing one would just split the player's attention at the worst
+   * possible moment.
+   */
+  private tickOffers(dt: number): void {
+    this.messenger.tick(dt)
+    if (this.manhunt?.active || this.messenger.hasOffer) return
+    if (this.elapsedMs < this.nextOfferAt) return
+    this.nextOfferAt = this.elapsedMs + int(this.rng, 55_000, 95_000)
+
+    const kind = this.integrity.value < 55
+      ? 'repair'
+      : this.state.heat > 65
+        ? 'heat'
+        : this.rng() < 0.4
+          ? 'skeleton'
+          : 'heat'
+    this.messenger.raiseOffer(kind)
+  }
+
   // -- interactive chains + earned tokens --------------------------------
 
   /**
@@ -1310,7 +1472,14 @@ export class Shell {
     if (this.elapsedMs < this.nextChainAt) return
     // Never open one on top of an emergency: the whole appeal is running it
     // alongside normal play, and during a wave there is no normal play.
-    if (this.lockout || this.waveActive || this.inFinale || this.ejecting || this.reverseHack?.active) {
+    if (
+      this.lockout ||
+      this.waveActive ||
+      this.inFinale ||
+      this.ejecting ||
+      this.manhunt?.active ||
+      this.reverseHack?.active
+    ) {
       this.nextChainAt = this.elapsedMs + 6000
       return
     }
@@ -1330,6 +1499,44 @@ export class Shell {
         grantToken: (t) => this.grantToken(t),
       },
     })
+  }
+
+  /**
+   * Roll for them pivoting into your machine unprompted.
+   *
+   * Gated on depth (they need to be inside you to matter), on exposure
+   * (a wounded machine is the one they get into), and on the play mode's
+   * reverseRate -- so CASUAL sees this rarely and IRL sees it a lot.
+   */
+  private tickReverseRoll(): void {
+    if (this.elapsedMs < this.nextReverseRollAt) return
+    if (
+      this.reverseHack?.active ||
+      this.manhunt?.active ||
+      this.lockout ||
+      this.inFinale ||
+      this.ejecting ||
+      this.waveActive ||
+      this.extracting
+    ) {
+      this.nextReverseRollAt = this.elapsedMs + 8000
+      return
+    }
+
+    const depthIdx = LAYER_ORDER.indexOf(this.state.layer)
+    if (depthIdx < 2) {
+      this.nextReverseRollAt = this.elapsedMs + 12_000
+      return
+    }
+
+    this.nextReverseRollAt = this.elapsedMs + int(this.rng, 28_000, 52_000) / this.mode.reverseRate
+    const chance = Math.min(
+      0.85,
+      (0.14 + depthIdx * 0.09 + this.integrity.exposure * 0.5 + (this.state.heat / 100) * 0.25) *
+        this.mode.reverseRate,
+    )
+    if (this.rng() > chance) return
+    this.triggerReverseHack(0.35 + depthIdx * 0.09)
   }
 
   private grantToken(token: Token): void {
