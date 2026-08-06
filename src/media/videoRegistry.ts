@@ -159,8 +159,40 @@ export function preloadAvailability(limit = FEED_CLIPS.length): void {
   for (const clip of FEED_CLIPS.slice(0, limit)) void probeClip(clip)
 }
 
-export function pickClip(rand: () => number, kind?: FeedKind): FeedClip {
-  const pool = kind ? FEED_CLIPS.filter((c) => c.kind === kind) : FEED_CLIPS
-  const list = pool.length > 0 ? pool : FEED_CLIPS
-  return list[Math.floor(rand() * list.length)] ?? FEED_CLIPS[0]!
+/**
+ * Clips shown recently, newest last.
+ *
+ * Without this, an unweighted draw happily returns the same feed two or
+ * three popups running -- which is exactly how seventeen distinct clips
+ * read as "i keep seeing the same one a lot". Same trick the content
+ * grammar already uses for text: recently-used entries are skipped until
+ * the pool has cycled.
+ */
+const recentClips: string[] = []
+const RECENT_LIMIT = 6
+
+export function pickClip(rand: () => number, kind?: FeedKind | readonly FeedKind[]): FeedClip {
+  const kinds = kind === undefined ? null : Array.isArray(kind) ? kind : [kind as FeedKind]
+  const byKind = kinds ? FEED_CLIPS.filter((c) => kinds.includes(c.kind)) : FEED_CLIPS
+  const base = byKind.length > 0 ? byKind : FEED_CLIPS
+
+  // Prefer clips that are known to actually exist. FEED_CLIPS is a manifest
+  // of *slots*, and any slot with no file renders as canvas static -- so
+  // drawing blindly from the manifest served a synthetic feed roughly one
+  // popup in six once 17 of 20 clips had landed, which reads as a broken
+  // window rather than as a fallback. Falls back to the full list only
+  // before probing has resolved, or if no clip exists at all.
+  const present = base.filter((c) => availability.get(c.file) === 'present')
+  const pool = present.length > 0 ? present : base
+
+  const fresh = pool.filter((c) => !recentClips.includes(c.file))
+  const list = fresh.length > 0 ? fresh : pool
+  const pick = list[Math.floor(rand() * list.length)] ?? FEED_CLIPS[0]!
+
+  recentClips.push(pick.file)
+  // Never suppress the whole pool: a two-clip kind (thermal, doorcam) would
+  // otherwise empty `fresh` on every draw and lose the benefit entirely.
+  const cap = Math.min(RECENT_LIMIT, Math.max(1, pool.length - 1))
+  while (recentClips.length > cap) recentClips.shift()
+  return pick
 }

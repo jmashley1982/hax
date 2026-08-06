@@ -156,8 +156,19 @@ export class Dashboard {
     const modeBtn = document.createElement('button')
     modeBtn.className = 'dash__toggle'
     const modes: InteractionMode[] = ['hybrid', 'chaos', 'intent']
+    // INTENT deliberately makes raw keystrokes inert, which is impossible to
+    // guess from the word "INTENT" alone -- picking it and then finding the
+    // windows unresponsive reads as a broken game, not as a mode.
+    const modeBlurbs: Record<InteractionMode, string> = {
+      hybrid: 'mash keys AND type commands',
+      chaos: 'mash keys, no commands needed',
+      intent: 'typed commands only -- keys alone do nothing',
+    }
+    const modeHint = document.createElement('div')
+    modeHint.className = 'dash__fieldhint'
     const paintMode = (): void => {
       modeBtn.textContent = this.state.mode.toUpperCase()
+      modeHint.textContent = modeBlurbs[this.state.mode]
     }
     modeBtn.addEventListener('click', () => {
       const i = modes.indexOf(this.state.mode)
@@ -181,7 +192,7 @@ export class Dashboard {
     })
     themeRow.append(themeLab, themeBtn)
 
-    box.append(modeRow, themeRow)
+    box.append(modeRow, modeHint, themeRow)
     return box
   }
 

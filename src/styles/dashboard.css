@@ -100,6 +100,15 @@
   color: var(--fg-dim);
 }
 
+/* One-line explanation under a setting whose effect isn't guessable. */
+.dash__fieldhint {
+  margin: -0.25rem 0 0.35rem;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  opacity: 0.72;
+}
+
 .dash__input {
   flex: 1 1 auto;
   min-width: 0;

@@ -24,6 +24,23 @@
   animation: term-cursor-blink var(--cursor-blink-ms) steps(1) infinite;
 }
 
+/*
+ * INTENT mode: raw keystrokes are inert by design, so when one is spent the
+ * command line pulses to say "the input you want goes HERE, then ENTER".
+ */
+.prompt--attention {
+  animation: prompt-attention 0.4s ease-in-out 4;
+}
+
+@keyframes prompt-attention {
+  0%, 100% { color: var(--fg-bright); text-shadow: 0 0 calc(var(--glow-strength) * 6px) var(--glow); }
+  50% { color: var(--accent-2); text-shadow: 0 0 calc(var(--glow-strength) * 16px) var(--accent-2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt--attention { animation: none; color: var(--accent-2); }
+}
+
 .statusbar {
   position: absolute;
   bottom: 0;

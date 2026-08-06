@@ -96,6 +96,20 @@ export class Prompt {
     this.el.textContent = `> ${this.ghost.slice(0, this.revealed)}`
   }
 
+  /**
+   * Pulse the command line to say "the input you want goes here".
+   * Used by INTENT mode, where keystrokes deliberately do nothing to the
+   * board and the player otherwise has no way to know that's on purpose.
+   */
+  flagAttention(): void {
+    this.el.classList.remove('prompt--attention')
+    // Force a reflow so re-adding the class restarts the animation even
+    // when the previous pulse hasn't finished.
+    void this.el.offsetWidth
+    this.el.classList.add('prompt--attention')
+    setTimeout(() => this.el.classList.remove('prompt--attention'), 1600)
+  }
+
   destroy(): void {
     window.removeEventListener('keydown', this.handleKeydown)
     if (this.clearTimer) clearTimeout(this.clearTimer)

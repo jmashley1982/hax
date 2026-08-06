@@ -20,8 +20,8 @@ import type { WindowManager } from './manager'
 export interface CamWindowOptions {
   manager: WindowManager
   rng: Rng
-  /** Restrict to a kind -- 'webcam' for the "they're watching you" beat. */
-  kind?: FeedKind
+  /** Restrict to one or more kinds -- 'webcam' for the "they're watching you" beat. */
+  kind?: FeedKind | readonly FeedKind[]
   /** Overrides the burned-in label (e.g. to name the target org). */
   labelPrefix?: string
   /** Auto-close after this long. Omit to leave it until evicted. */

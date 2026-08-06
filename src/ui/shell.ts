@@ -84,6 +84,8 @@ export class Shell {
   private rng: Rng
   private shellEl: HTMLElement
   private elapsedMs = 0
+  /** Negative so the very first inert keystroke in INTENT explains itself immediately. */
+  private lastIntentHintMs = -1e9
   private breakthroughGraceUntil = 0
   private targetPanel: TaskPanel | null = null
   private statusRight!: HTMLElement
@@ -530,8 +532,15 @@ export class Shell {
     this.inputPipeline.push({ kind: 'key', token: char })
 
     const profile = MODE_PROFILES[this.state.mode]
-    // INTENT mode keeps keystrokes inert (commands only) -- unchanged.
-    if (profile.keyGain <= 0) return
+    // INTENT mode keeps raw keystrokes inert -- only submitted commands move
+    // the board. That is the mode's whole identity, but it used to happen in
+    // total silence: you typed, the prompt filled, and nothing anywhere said
+    // why the windows weren't reacting. Indistinguishable from broken. So the
+    // rule now announces itself instead of just being obeyed.
+    if (profile.keyGain <= 0) {
+      this.nudgeIntentHint()
+      return
+    }
 
     // Active threats claim the keystroke first -- "you have to break their
     // attempt" needs to be the most urgent thing on screen, not something
@@ -576,6 +585,28 @@ export class Shell {
     this.applyResidualProgress()
   }
 
+  /**
+   * Teach INTENT's rule at the moment it bites, without nagging.
+   *
+   * Fires on the first inert keystroke of a run and then at most every 12
+   * seconds, and points at the panel that *would* have taken the input, so
+   * the answer ("press ENTER") arrives attached to the thing that isn't
+   * moving.
+   */
+  private nudgeIntentHint(): void {
+    if (this.elapsedMs - this.lastIntentHintMs < 12_000) return
+    this.lastIntentHintMs = this.elapsedMs
+    this.refreshTarget()
+    store.emit('terminal:line', {
+      text: this.targetPanel
+        ? `-- INTENT MODE :: keystrokes alone are inert. type a command (scan / exploit / decrypt / pivot) then ENTER -- it hits ${this.targetPanel.objectiveText}`
+        : '-- INTENT MODE :: keystrokes alone are inert. type a command then ENTER. clicking panels still works.',
+      tone: 'warning',
+      speed: 0,
+    })
+    this.prompt.flagAttention()
+  }
+
   private applyResidualProgress(): void {
     if (this.elapsedMs < this.breakthroughGraceUntil) return
     if (this.layers.addProgress(0.6)) this.handleThresholdCrossed()
@@ -603,10 +634,36 @@ export class Shell {
     // A recognized command is the "power move" clicking can't do: it hits
     // every live panel at once, so typing real hacking verbs visibly moves
     // the whole board.
-    if (match.tier === 'exact' || match.tier === 'fuzzy') {
-      const boost = computeProgress(evaluated, profile) * match.strength * 0.01
-      for (const panel of this.director.activePanels) panel.onKeyBurst()
-      void boost
+    //
+    // This used to compute a boost and then literally throw it away
+    // (`void boost`), handing each panel a single keystroke's worth of
+    // progress -- one press for a whole typed command. In INTENT, where
+    // that is the *entire* input economy, correct play advanced the board
+    // barely faster than not playing at all. The boost is now spent.
+    if (match.tier === 'nonsense') return
+    const boost = computeProgress(evaluated, profile) * match.strength
+    // ~8 bursts for an exact command in INTENT (submitGain 8), ~6 in
+    // HYBRID, scaled down by match quality. Deliberately generous: a
+    // command costs several keystrokes and a decision, so it has to be
+    // worth more than the keystrokes it took to type.
+    const bursts = Math.max(1, Math.round(boost * 0.6))
+
+    this.refreshTarget()
+    const target = this.targetPanel
+    if (target && !target.isDone) {
+      if (target.isSealed) target.breakSealFromInput()
+      for (let i = 0; i < bursts; i++) if (!target.onKeyBurst()) break
+    }
+    // Everything else on the board gets a smaller share -- that spread is
+    // what makes a typed command read as hitting the whole system.
+    const spread = Math.max(1, Math.round(bursts * 0.35))
+    for (const panel of this.director.activePanels) {
+      if (panel === target || panel.isDone) continue
+      if (panel.isSealed) {
+        panel.breakSealFromInput()
+        continue
+      }
+      for (let i = 0; i < spread; i++) if (!panel.onKeyBurst()) break
     }
   }
 
@@ -782,17 +839,24 @@ export class Shell {
         // Authored content, like the camera clips -- these should actually
         // be seen, so they get a healthy rate rather than the process
         // windows' deliberately-thinned one.
-        if (this.rng() < 0.34 + depthIdx * 0.05) {
+        // There are roughly twice as many clips as documents, so the feeds
+        // get roughly twice the airtime -- otherwise the smaller pool is the
+        // one that visibly repeats.
+        if (this.rng() < 0.17 + depthIdx * 0.03) {
           spawnDocWindow(this.windows, this.rng, this.target.org)
         }
 
-        const camChance = 0.14 + LAYER_ORDER.indexOf(this.state.layer) * 0.06
+        const camChance = 0.34 + LAYER_ORDER.indexOf(this.state.layer) * 0.06
         if (this.rng() < camChance) {
           spawnCamWindow({
             manager: this.windows,
             rng: this.rng,
             labelPrefix: this.target.org.toUpperCase(),
-            kind: this.rng() < 0.75 ? 'cctv' : 'doorcam',
+            // Everything except 'webcam', which is reserved for the reverse
+            // hack ("they're watching YOU"). Naming one narrow kind here --
+            // doorcam has exactly two clips -- handed a quarter of all
+            // camera popups to the same two files.
+            kind: ['cctv', 'thermal', 'doorcam'],
           })
         }
       }
