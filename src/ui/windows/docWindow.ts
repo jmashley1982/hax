@@ -16,7 +16,14 @@ export function spawnDocWindow(manager: WindowManager, rng: Rng, org: string): b
   if (!doc) return false
 
   const win = manager.spawn(
-    { title: `RECOVERED :: ${org.toUpperCase()}`, modal: false, closable: true, decor: 'normal' },
+    {
+      title: `RECOVERED :: ${org.toUpperCase()}`,
+      modal: false,
+      closable: true,
+      decor: 'normal',
+      // The documents are 9:16 photographs -- tall, not wide.
+      span: { cols: 1, rows: 2 },
+    },
     'random',
   )
   win.el.classList.add('docwin')

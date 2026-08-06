@@ -9,7 +9,11 @@
    no amount of collision checking can fix. */
 .chainwin {
   min-width: 240px;
-  max-width: 258px;
+}
+
+/* The scanner spans two slots, so it must not inherit the 1x1 cap. */
+.chainwin--scan {
+  max-width: 526px;
 }
 
 .chain {

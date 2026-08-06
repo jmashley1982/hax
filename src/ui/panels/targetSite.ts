@@ -42,7 +42,16 @@ export class TargetSitePanel {
 
   constructor(manager: WindowManager) {
     this.win = manager.spawn(
-      { title: 'TARGET :: CONNECTING...', modal: false, closable: false, decor: 'normal', pinned: true, fixture: true },
+      {
+        title: 'TARGET :: CONNECTING...',
+        modal: false,
+        closable: false,
+        decor: 'normal',
+        pinned: true,
+        fixture: true,
+        // The dossier is the biggest thing on the board by design.
+        span: { cols: 2, rows: 2 },
+      },
       'cascade',
     )
     this.win.el.classList.add('target-site')

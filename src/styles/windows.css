@@ -35,7 +35,7 @@
 .win {
   position: absolute;
   min-width: 260px;
-  max-width: 258px;
+  max-width: 258px; /* the 1x1 default; spans override below */
   background: var(--panel);
   border: 1px solid var(--panel-edge);
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(0, 0, 0, 0.35);
@@ -43,6 +43,34 @@
   font-size: 13px;
   animation: win-in 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
   transform-origin: top left;
+}
+
+/*
+ * Span widths.
+ *
+ * A blanket max-width made every window identical, which is the opposite
+ * of "lots of windows open in all sizes". The placement grid knows what
+ * each span costs, so a wider window is safe -- it just has to declare
+ * itself. Slot pitch is 268x228 (manager.ts).
+ */
+.win--span-2x1,
+.win--span-2x2 {
+  max-width: 526px;
+  width: 526px;
+}
+
+.win--span-1x2 .win__body,
+.win--span-2x2 .win__body {
+  max-height: 400px;
+}
+
+@media (max-width: 900px) {
+  /* Not enough columns for a 2-wide window to fit beside anything. */
+  .win--span-2x1,
+  .win--span-2x2 {
+    max-width: 258px;
+    width: auto;
+  }
 }
 
 .win.is-closing {

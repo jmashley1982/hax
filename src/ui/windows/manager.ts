@@ -57,6 +57,7 @@ export class WindowManager {
     opts: Omit<WindowOptions, 'x' | 'y'>,
     placement: Placement = 'cascade',
   ): Win {
+    const span = opts.span ?? { cols: 1, rows: 1 }
     // A priority window never queues behind clutter. Only when the board
     // is actually full does it take an ambient slot by force -- a warning
     // you cannot see because six process windows got there first is worse
@@ -66,7 +67,7 @@ export class WindowManager {
       const cap = this.getCapacity?.() ?? Infinity
       if (this.budgetedCount >= cap) this.evictOldestAmbient()
     }
-    const { x, y } = this.computePosition(placement)
+    const { x, y } = this.computePosition(placement, span)
     const win = new Win({ ...opts, x, y })
 
     this.zCounter += 1
@@ -150,7 +151,15 @@ export class WindowManager {
    * you -- starving those would be worse than the pile.
    */
   get budgetedCount(): number {
-    return this.windows.filter((w) => !w.isModal && !w.isFixture && !w.isClosed).length
+    // Counted in SLOTS, not windows: a spanning window genuinely occupies
+    // more of the board, so it has to cost more of the budget or the cap
+    // stops meaning anything about how full the screen looks.
+    let n = 0
+    for (const w of this.windows) {
+      if (w.isModal || w.isFixture || w.isClosed) continue
+      n += w.span.cols * w.span.rows
+    }
+    return n
   }
 
   /** Make room for a priority window by dropping the oldest ambient one. */
@@ -225,7 +234,7 @@ export class WindowManager {
    * the slot count, checking real occupancy actually SOLVES the layout
    * rather than just reducing the odds.
    */
-  private slotTaken(x: number, y: number): boolean {
+  private slotTaken(x: number, y: number, spanW = SLOT_W, spanH = SLOT_H): boolean {
     for (const w of this.windows) {
       if (w.isClosed) continue
       const el = w.el
@@ -241,13 +250,20 @@ export class WindowManager {
       const wh = Math.max(el.offsetHeight, SLOT_H)
       // Deliberately generous: touching edges still counts as a collision,
       // because two windows flush against each other read as a pile.
-      if (x < wx + ww && x + SLOT_W > wx && y < wy + wh && y + SLOT_H > wy) return true
+      if (x < wx + ww && x + spanW > wx && y < wy + wh && y + spanH > wy) return true
     }
     return false
   }
 
-  private computePosition(placement: Placement): { x: number; y: number } {
+  private computePosition(
+    placement: Placement,
+    span: { cols: number; rows: number } = { cols: 1, rows: 1 },
+  ): { x: number; y: number } {
     const { cols, rows, w, h } = this.grid()
+    // A spanning window has to clear every slot it covers, not just the
+    // one its top-left corner lands in.
+    const spanW = SLOT_W * span.cols
+    const spanH = SLOT_H * span.rows
 
     // Preferred spots for the non-grid placements. If the preferred spot
     // is free we take it; otherwise we fall through to the grid search
@@ -255,46 +271,54 @@ export class WindowManager {
     // Skipping this check is what left the TARGET dossier permanently
     // overlapped by centre-placed threat windows.
     if (placement === 'center') {
-      const p = { x: Math.round(w / 2 - SLOT_W / 2), y: Math.round(h / 2 - SLOT_H / 2) }
-      if (!this.slotTaken(p.x, p.y)) return this.clampToBoard(p, w, h)
+      const p = { x: Math.round(w / 2 - spanW / 2), y: Math.round(h / 2 - spanH / 2) }
+      if (!this.slotTaken(p.x, p.y, spanW, spanH)) return this.clampToBoard(p, w, h, spanW)
     }
     if (placement === 'cascade') {
       this.cascadeIndex = (this.cascadeIndex + 1) % 8
       const p = { x: 12 + this.cascadeIndex * 22, y: 10 + this.cascadeIndex * 18 }
-      if (!this.slotTaken(p.x, p.y)) return this.clampToBoard(p, w, h)
+      if (!this.slotTaken(p.x, p.y, spanW, spanH)) return this.clampToBoard(p, w, h, spanW)
     }
 
     // Spread the slots evenly across the work area rather than packing
     // them left, so a half-full board still looks like a desktop.
+    // A window spanning N columns cannot start in the last N-1 of them.
+    const startCols = Math.max(1, cols - (span.cols - 1))
+    const startRows = Math.max(1, rows - (span.rows - 1))
     const spreadW = cols > 1 ? (w - SLOT_W) / (cols - 1) : 0
     const spreadH = rows > 1 ? (h - SLOT_H) / (rows - 1) : 0
-    const slots = Math.max(1, cols * rows)
+    const slots = Math.max(1, startCols * startRows)
     const start = this.cascadeIndex % slots
     this.cascadeIndex += 1
     let fallback: { x: number; y: number } | null = null
 
     for (let i = 0; i < slots; i++) {
       const slot = (start + i) % slots
-      const col = slot % cols
-      const row = Math.floor(slot / cols)
+      const col = slot % startCols
+      const row = Math.floor(slot / startCols)
       const candidate = {
         x: Math.round(col * spreadW),
         y: Math.round(row * spreadH),
       }
       fallback ??= candidate
-      if (this.slotTaken(candidate.x, candidate.y)) continue
-      if (this.overlapsAvoid(candidate.x, candidate.y)) continue
-      return this.clampToBoard(candidate, w, h)
+      if (this.slotTaken(candidate.x, candidate.y, spanW, spanH)) continue
+      if (this.overlapsAvoid(candidate.x, candidate.y, spanW, spanH)) continue
+      return this.clampToBoard(candidate, w, h, spanW)
     }
-    return this.clampToBoard(fallback ?? { x: 0, y: 0 }, w, h)
+    return this.clampToBoard(fallback ?? { x: 0, y: 0 }, w, h, spanW)
   }
 
   /** Never place a window where part of it cannot be reached. */
-  private clampToBoard(p: { x: number; y: number }, w: number, h: number): { x: number; y: number } {
+  private clampToBoard(
+    p: { x: number; y: number },
+    w: number,
+    h: number,
+    spanW = SLOT_W,
+  ): { x: number; y: number } {
     // Coordinates are relative to the work area now, so the clamp is just
     // "inside the box" rather than a set of guessed viewport insets.
     return {
-      x: Math.max(0, Math.min(p.x, Math.max(0, w - SLOT_W))),
+      x: Math.max(0, Math.min(p.x, Math.max(0, w - spanW))),
       y: Math.max(0, Math.min(p.y, Math.max(0, h - 120))),
     }
   }

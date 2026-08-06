@@ -467,7 +467,7 @@
 .docwin__img {
   display: block;
   max-width: 100%;
-  max-height: 150px;
+  max-height: 330px;
   object-fit: contain;
   /* Graded to sit in the CRT world rather than looking pasted in. */
   filter: grayscale(0.25) contrast(1.06) brightness(0.95);

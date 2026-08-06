@@ -36,6 +36,16 @@ export interface WindowOptions {
    * much is on screen in total, not about one category of it.
    */
   fixture?: boolean
+  /**
+   * How many placement slots this window occupies.
+   *
+   * Uniform one-slot windows are what bought non-overlapping placement,
+   * but they also made every window the same size -- the opposite of "a
+   * desktop with lots of windows open in all sizes". A span lets a window
+   * be genuinely bigger while the grid still knows exactly what it costs,
+   * so variety and tidiness stop being in tension.
+   */
+  span?: { cols: number; rows: number }
   x: number
   y: number
 }
@@ -57,8 +67,11 @@ export class Win {
 
   constructor(private opts: WindowOptions) {
     this.el = document.createElement('div')
+    const span = opts.span ?? { cols: 1, rows: 1 }
     this.el.className =
-      `win${opts.decor === 'danger' ? ' win--danger' : ''}${opts.priority ? ' win--priority' : ''}`
+      `win win--span-${span.cols}x${span.rows}` +
+      `${opts.decor === 'danger' ? ' win--danger' : ''}` +
+      `${opts.priority ? ' win--priority' : ''}`
     this.el.style.left = `${opts.x}px`
     this.el.style.top = `${opts.y}px`
 
@@ -129,6 +142,11 @@ export class Win {
 
   get isFixture(): boolean {
     return this.opts.fixture ?? false
+  }
+
+  /** Slots consumed, for the placement grid and the board budget. */
+  get span(): { cols: number; rows: number } {
+    return this.opts.span ?? { cols: 1, rows: 1 }
   }
 
   setTitle(text: string): void {

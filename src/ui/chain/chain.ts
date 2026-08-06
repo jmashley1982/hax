@@ -213,7 +213,7 @@ export class Chain {
     this.stage = 'scanner'
     this.detachCurrent()
 
-    const win = this.spawn(`SCAN :: ${this.theme.hunting.toUpperCase()}`, 'chainwin--scan')
+    const win = this.spawn(`SCAN :: ${this.theme.hunting.toUpperCase()}`, 'chainwin--scan', true)
     const body = document.createElement('div')
     body.className = 'chain'
 
@@ -368,9 +368,18 @@ export class Chain {
 
   // -- plumbing -----------------------------------------------------------
 
-  private spawn(title: string, cls: string): Win {
+  private spawn(title: string, cls: string, wide = false): Win {
     const win = this.opts.manager.spawn(
-      { title, modal: false, closable: true, decor: 'normal', pinned: true },
+      {
+        title,
+        modal: false,
+        closable: true,
+        decor: 'normal',
+        pinned: true,
+        // The scanner is the one chain step that wants width: it is a
+        // progress bar you watch while working elsewhere.
+        span: wide ? { cols: 2, rows: 1 } : { cols: 1, rows: 1 },
+      },
       'random',
     )
     win.el.classList.add('chainwin', cls)

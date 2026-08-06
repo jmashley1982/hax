@@ -5,15 +5,18 @@
    and THEN given its body, so without one it measures ~40px tall at the
    moment other windows are choosing slots, and they take the space it is
    about to grow into. */
+/*
+ * Width comes from the 2x2 span class, not from here. A hardcoded 468px
+ * disagreed with the 536px the placement grid reserves for two columns,
+ * so the grid's own arithmetic about this window was wrong.
+ */
 .win.target-site {
-  width: 468px;
-  max-width: 468px;
   min-height: 356px;
 }
 
 .target-site__body {
   position: relative;
-  width: 460px;
+  width: 100%;
   height: 300px;
   padding: 0;
   overflow: hidden;
