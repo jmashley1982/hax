@@ -151,7 +151,11 @@ export function anyClipPresent(): boolean {
 }
 
 /** Warm the cache in the background so the first popup doesn't wait on a probe. */
-export function preloadAvailability(limit = 6): void {
+export function preloadAvailability(limit = FEED_CLIPS.length): void {
+  // Probe every slot, not just the first few: unprobed clips render
+  // synthetically for a beat before swapping, and with a full folder that
+  // swap is visible. preload='metadata' means this reads headers, not whole
+  // files, so covering all of them is cheap.
   for (const clip of FEED_CLIPS.slice(0, limit)) void probeClip(clip)
 }
 

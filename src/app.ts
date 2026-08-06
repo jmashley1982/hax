@@ -1,10 +1,9 @@
 import { clock } from '@/core/clock'
 import { applySavedCareer, saveState, LAYER_ORDER, type GameState } from '@/core/state'
-import { applyLayerPalette, applyLayerSkin } from '@/themes/themes'
+import { applyLayerSkin, clearLayerPalette } from '@/themes/themes'
 import { Dashboard } from '@/ui/dashboard/dashboard'
 import { Shell, type SessionOutcome } from '@/ui/shell'
 import { Debrief } from '@/ui/dashboard/debrief'
-import { layerDef } from '@/sim/layers'
 import type { Contract } from '@/sim/contracts'
 
 /**
@@ -38,7 +37,10 @@ export class App {
     // The board is the player's own machine, not a target -- reset the depth
     // skin so the dashboard doesn't inherit the last run's palette.
     this.state.layer = 'surface'
-    applyLayerPalette(layerDef('surface').palette)
+    // The dashboard belongs to the THEME, not to a depth palette -- leaving
+    // the inline layer overrides in place is what made the theme toggle
+    // look dead.
+    clearLayerPalette()
     applyLayerSkin('surface')
     clock.stop()
 

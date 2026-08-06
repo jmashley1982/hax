@@ -10,7 +10,7 @@ import type { LayerPalette } from '@/sim/layers'
  * Phase 8 adds `amber` / `neon` / `agency` blocks to base.css and lists
  * them here — this file does not change shape when that happens.
  */
-export const AVAILABLE_THEMES: readonly ThemeId[] = ['phosphor']
+export const AVAILABLE_THEMES: readonly ThemeId[] = ['phosphor', 'amber', 'neon', 'agency']
 
 export function applyTheme(theme: ThemeId): void {
   document.documentElement.dataset.theme = theme
@@ -45,6 +45,26 @@ export function cycleTheme(state: GameState): void {
  */
 export function applyLayerSkin(layer: LayerId): void {
   document.documentElement.dataset.layer = layer
+}
+
+/**
+ * Drop the inline per-layer overrides so the active THEME's stylesheet
+ * values apply again.
+ *
+ * applyLayerPalette writes these straight onto documentElement.style, and
+ * inline properties outrank any stylesheet -- so once a run had set them,
+ * switching theme changed the data-theme attribute and nothing else. The
+ * theme button appeared to do nothing. The dashboard clears them; a live
+ * session re-applies them, where a depth palette should win.
+ */
+export function clearLayerPalette(): void {
+  const root = document.documentElement
+  for (const prop of [
+    '--fg', '--fg-dim', '--fg-bright', '--accent', '--accent-2',
+    '--ok', '--glow', '--bg-deep', '--bg', '--panel', '--panel-edge',
+  ]) {
+    root.style.removeProperty(prop)
+  }
 }
 
 export function applyLayerPalette(palette: LayerPalette): void {

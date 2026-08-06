@@ -24,6 +24,72 @@
   --cursor-blink-ms: 900ms;
 }
 
+/* Phase 8's remaining themes. The theme toggle cycled a one-entry list
+   before these existed, so the button appeared to do nothing. Every value
+   below is the same variable set phosphor defines -- no other file changes. */
+:root[data-theme='amber'] {
+  --bg: #070502;
+  --bg-deep: #030201;
+  --panel: #130c04;
+  --panel-edge: #3d2a0d;
+  --fg: #ffb62e;
+  --fg-dim: #8a5f14;
+  --fg-bright: #ffe4b0;
+  --accent: #ffb62e;
+  --accent-2: #ff8a1f;
+  --ok: #ffc453;
+  --warn: #ffd23f;
+  --danger: #ff5533;
+  --glow: #ffb62e;
+  --glow-strength: 0.85;
+  --scanline-opacity: 0.14;
+  --vignette-strength: 0.6;
+  --font-mono: 'Courier New', ui-monospace, 'Cascadia Code', monospace;
+  --cursor-blink-ms: 900ms;
+}
+
+:root[data-theme='neon'] {
+  --bg: #05030a;
+  --bg-deep: #020106;
+  --panel: #100823;
+  --panel-edge: #35176b;
+  --fg: #23f0ff;
+  --fg-dim: #1a7f96;
+  --fg-bright: #d8fbff;
+  --accent: #23f0ff;
+  --accent-2: #ff3ec8;
+  --ok: #35ffb0;
+  --warn: #ffd23f;
+  --danger: #ff2e6b;
+  --glow: #23f0ff;
+  --glow-strength: 1.05;
+  --scanline-opacity: 0.13;
+  --vignette-strength: 0.5;
+  --font-mono: 'Courier New', ui-monospace, 'Cascadia Code', monospace;
+  --cursor-blink-ms: 700ms;
+}
+
+:root[data-theme='agency'] {
+  --bg: #05070a;
+  --bg-deep: #020304;
+  --panel: #0c1219;
+  --panel-edge: #23323f;
+  --fg: #cfe4f5;
+  --fg-dim: #6d8091;
+  --fg-bright: #ffffff;
+  --accent: #cfe4f5;
+  --accent-2: #6fb8ff;
+  --ok: #7fe0a8;
+  --warn: #ffc857;
+  --danger: #ff5f5f;
+  --glow: #9fc6e8;
+  --glow-strength: 0.5;
+  --scanline-opacity: 0.08;
+  --vignette-strength: 0.45;
+  --font-mono: 'Courier New', ui-monospace, 'Cascadia Code', monospace;
+  --cursor-blink-ms: 1100ms;
+}
+
 * {
   box-sizing: border-box;
 }
