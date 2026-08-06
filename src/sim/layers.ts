@@ -132,7 +132,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
       fg: '#ffb339', fgDim: '#94631a', fgBright: '#ffe2b0', accent2: '#ff8c1a',
       glow: '#ffb339', bgDeep: '#0a0602', panel: '#160f05', panelEdge: '#4a3312',
     },
-    unlocks: ['fileExfil'],
+    unlocks: ['fileExfil', 'dragExfil'],
     panelFloor: 4,
     sizeBias: 0.4,
     modifier: 'decay',

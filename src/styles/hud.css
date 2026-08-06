@@ -286,3 +286,18 @@
 .objective__job:empty {
   display: none;
 }
+
+/* INTEGRITY reads opposite to HEAT: it drains toward danger rather than
+   filling toward it, so it gets its own colour ramp. */
+.hud__heatbar-fill--integrity {
+  background: var(--ok);
+}
+
+.hud__heatbar-fill--integrity.is-warn {
+  background: var(--warn);
+}
+
+.hud__heatbar-fill--integrity.is-critical {
+  background: var(--danger);
+  animation: hud-pulse 500ms ease-in-out infinite;
+}

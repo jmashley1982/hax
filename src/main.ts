@@ -13,6 +13,7 @@ import '@/styles/panels.css'
 import '@/styles/target.css'
 import '@/styles/layers.css'
 import '@/styles/dashboard.css'
+import '@/styles/reverse.css'
 import '@/styles/lockout.css'
 // Last, so its [data-layout='mobile'] rules win over the desktop defaults
 // they override without needing !important on every declaration.

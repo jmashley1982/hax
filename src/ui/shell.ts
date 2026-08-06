@@ -8,6 +8,7 @@ import { MODE_PROFILES, computeProgress } from '@/core/progress'
 import { matchCommand } from '@/sim/commands/registry'
 import { buildCommandResponse } from '@/sim/commands/responses'
 import { HeatSystem } from '@/sim/heat'
+import { IntegritySystem, INTEGRITY_COST, INTEGRITY_GAIN } from '@/sim/integrity'
 import { awardScore } from '@/sim/score'
 import { LayerSystem } from '@/sim/layers'
 import { Director } from '@/sim/director'
@@ -15,6 +16,8 @@ import { CounterHackDirector, type ThreatEvent, type ThreatKind, type ThreatWave
 import { ProcessSpawnDirector, burstSize } from '@/sim/processDirector'
 import { LockoutDirector } from '@/sim/lockoutDirector'
 import { LockoutOverlay } from './lockout'
+import { ReverseHack, reverseHackOpener } from './reverseHack'
+import { DragExfilPanel } from './panels/dragExfil'
 import { dossierFor, type ReconResult } from '@/sim/recon'
 import { ContentEngine } from '@/content'
 import type { MissionFacts } from '@/content/grammar'
@@ -64,6 +67,8 @@ export class Shell {
   private inputPipeline = new InputPipeline()
   private windows: WindowManager
   private heat: HeatSystem
+  private integrity: IntegritySystem
+  private reverseHack: ReverseHack | null = null
   private layers: LayerSystem
   private director: Director
   private objective: ObjectiveBar
@@ -135,6 +140,7 @@ export class Shell {
     this.lockoutDirector = new LockoutDirector(mulberry32(state.seed + 7))
 
     this.heat = new HeatSystem(state)
+    this.integrity = new IntegritySystem(state)
     this.layers = new LayerSystem(state)
     this.windows = new WindowManager(this.shellEl, mulberry32(state.seed + 2))
 
@@ -166,6 +172,13 @@ export class Shell {
       (panel) => this.onPanelComplete(panel),
       (panel, delta) => this.onPanelProgress(panel, delta),
     )
+
+    // A corrupted file dropped into the local vault is the player letting
+    // them in -- the single most direct route to a reverse hack.
+    DragExfilPanel.onCorrupted = () => {
+      this.integrity.damage(INTEGRITY_COST.corruptedFile)
+      this.triggerReverseHack(0.5)
+    }
 
     this.mountStatusBar(this.shellEl)
     this.bindTargeting()
@@ -279,6 +292,8 @@ export class Shell {
     this.pending = []
     this.lockout?.destroy()
     this.lockout = null
+    this.reverseHack?.destroy()
+    this.reverseHack = null
     this.director.clearAll()
     this.windows.closeAll()
     this.terminal.destroy()
@@ -582,6 +597,7 @@ export class Shell {
 
   private onPanelComplete(panel: TaskPanel): void {
     awardScore(this.state, 120)
+    this.integrity.repair(INTEGRITY_GAIN.panelCleared)
     this.heat.add(-6)
 
     // LINKED layers: cracking one node drags its neighbours along, so the
@@ -629,14 +645,34 @@ export class Shell {
         ttlMs: 4000,
       })
     }
-    if (heatEvents.critical) this.onHeatCritical()
+    if (heatEvents.critical) {
+      this.integrity.damage(INTEGRITY_COST.heatCritical)
+      this.onHeatCritical()
+    }
+
+    // Integrity regenerates only while nothing hostile is live, so you
+    // cannot idle out of trouble -- you have to clear the threat first.
+    const underPressure =
+      this.waveActive || this.activeThreats.length > 0 || !!this.reverseHack?.active || this.inFinale
+    const integrityEvents = this.integrity.tick(dt, underPressure)
+    if (integrityEvents.overrun) {
+      this.handleOverrun()
+      return
+    }
+    if (integrityEvents.critical && !this.reverseHack?.active) {
+      store.emit('terminal:line', {
+        text: '!! WORKSTATION INTEGRITY CRITICAL -- you are wide open',
+        tone: 'danger',
+        speed: 0,
+      })
+    }
 
     // The target pulling the plug on the player's own terminal. Checked
     // before the counter-hack so the two can never fire on the same tick.
     if (
       this.lockoutDirector.tick(
         this.elapsedMs,
-        this.state.heat,
+        Math.min(100, this.state.heat + this.integrity.exposure * 40),
         this.state.layer,
         this.inFinale || this.ejecting || this.waveActive || this.activeThreats.length > 0,
       )
@@ -646,7 +682,15 @@ export class Shell {
     }
 
     if (!this.inFinale && !this.ejecting) {
-      const wave = this.counterHack.tick(this.elapsedMs, this.state.heat, this.state.layer, this.activeThreats.length)
+      const wave = this.counterHack.tick(
+        this.elapsedMs,
+        // Low integrity reads as extra heat to the counter-hack director --
+        // a wounded machine draws more attention. This is the compounding
+        // half of the tug of war.
+        Math.min(100, this.state.heat + this.integrity.exposure * 35),
+        this.state.layer,
+        this.activeThreats.length,
+      )
       if (wave) this.spawnThreatWave(wave)
 
       // "Random windows that pop open, show some code running, then
@@ -666,6 +710,74 @@ export class Shell {
     }
   }
 
+  // -- Reverse hack: they are inside YOUR machine ------------------------
+
+  /**
+   * Hostile processes land on the player's own desktop. Deliberately does
+   * NOT stop the board -- the tension is having to fight them off while the
+   * job is still running, which is what makes it different from the lockout.
+   */
+  private triggerReverseHack(severity: number): void {
+    if (this.reverseHack?.active || this.lockout || this.inFinale) return
+
+    store.emit('terminal:line', { text: reverseHackOpener(this.target.org, this.rng), tone: 'danger', speed: 0 })
+
+    // Severity rises with depth and with how exposed the player already is,
+    // so a weak machine gets hit harder -- the compounding half of the loop.
+    const intensity = Math.min(1, severity + this.layers.tension * 0.2 + this.integrity.exposure * 0.4)
+
+    this.reverseHack = new ReverseHack({
+      manager: this.windows,
+      mount: this.shellEl,
+      rng: this.rng,
+      org: this.target.org,
+      intensity,
+      onBreach: () => {
+        this.integrity.damage(INTEGRITY_COST.hostileExpired)
+        this.heat.add(6)
+      },
+      onRepelled: () => {
+        this.reverseHack = null
+        this.integrity.repair(INTEGRITY_GAIN.waveRepelled)
+        awardScore(this.state, 140)
+        store.emit('terminal:line', {
+          text: '>> hostile processes terminated -- machine is yours again',
+          tone: 'success',
+          speed: 2,
+        })
+      },
+      onTakeover: () => {
+        this.reverseHack = null
+        // Losing the desktop fight escalates into the full-screen ceremony.
+        this.integrity.damage(INTEGRITY_COST.lockout)
+        this.beginLockout()
+      },
+    })
+  }
+
+  /**
+   * Integrity hit zero: the workstation is theirs and the contract is gone.
+   * Career score is kept -- the agreed cost is the job, not the run history.
+   */
+  private handleOverrun(): void {
+    if (this.destroyed || this.inFinale) return
+    this.reverseHack?.destroy()
+    this.reverseHack = null
+    this.director.clearAll()
+    this.setTarget(null)
+    for (const t of this.activeThreats) t.win.close()
+    this.activeThreats = []
+
+    store.emit('terminal:line', {
+      text: `==== WORKSTATION OVERRUN :: ${this.target.org} OWNS THIS MACHINE ====`,
+      tone: 'danger',
+      speed: 0,
+    })
+    this.objective.set('BURNED -- disconnecting')
+    this.showEndingBanner('BURNED')
+    this.endContract('burned', 3600)
+  }
+
   // -- Lockout: they kill YOUR terminal ----------------------------------
 
   /**
@@ -681,6 +793,9 @@ export class Shell {
    */
   private beginLockout(): void {
     if (this.lockout) return
+    this.integrity.damage(INTEGRITY_COST.lockout)
+    this.reverseHack?.destroy()
+    this.reverseHack = null
 
     store.emit('terminal:line', {
       text: `!!!! ${this.target.org} PUSHED A KILL COMMAND -- TERMINAL DOWN !!!!`,

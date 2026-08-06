@@ -9,6 +9,8 @@ import { LAYER_ORDER, type GameState } from '@/core/state'
  */
 export class Hud {
   private off: (() => void) | null = null
+  private integrityFill!: HTMLElement
+  private integrityValue!: HTMLElement
   private el: HTMLElement
   private layerValue: HTMLElement
   private breachFill: HTMLElement
@@ -78,7 +80,24 @@ export class Hud {
     this.heatValue.className = 'hud__value'
     heatRow.append(heatLabel, heatBar, this.heatValue)
 
-    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow)
+    // INTEGRITY is the player's own machine, so it reads opposite to HEAT:
+    // full is good, empty ends the run. Given its own row and colour so the
+    // two meters are never confused at a glance.
+    const intRow = document.createElement('div')
+    intRow.className = 'hud__row'
+    const intLabel = document.createElement('span')
+    intLabel.className = 'hud__label'
+    intLabel.textContent = 'INTEG'
+    const intBar = document.createElement('div')
+    intBar.className = 'hud__heatbar'
+    this.integrityFill = document.createElement('div')
+    this.integrityFill.className = 'hud__heatbar-fill hud__heatbar-fill--integrity'
+    intBar.appendChild(this.integrityFill)
+    this.integrityValue = document.createElement('span')
+    this.integrityValue.className = 'hud__value'
+    intRow.append(intLabel, intBar, this.integrityValue)
+
+    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow, intRow)
     mountPoint.appendChild(this.el)
 
     this.render()
@@ -86,6 +105,12 @@ export class Hud {
   }
 
   private render(): void {
+    const integrity = Math.max(0, Math.round(this.state.integrity))
+    this.integrityFill.style.width = `${integrity}%`
+    this.integrityValue.textContent = `${integrity}%`
+    this.integrityFill.classList.toggle('is-warn', integrity <= 55 && integrity > 25)
+    this.integrityFill.classList.toggle('is-critical', integrity <= 25)
+
     this.scoreValue.textContent = String(Math.floor(this.state.score)).padStart(5, '0')
     this.layerValue.textContent = this.state.layer.toUpperCase()
 

@@ -1,0 +1,287 @@
+/* ============================================================
+   DRAG EXFIL + REVERSE HACK
+   (plan §16D / §16E)
+   ============================================================ */
+
+/* ---- drag exfil ---- */
+
+.dexfil {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dexfil__remote {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dexfil__file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--fg-dim);
+  font-size: 11px;
+  padding: 5px 6px;
+  min-height: 34px;
+  cursor: grab;
+  /* The panel owns the gesture -- without this a touch-drag scrolls the
+     board out from under the file instead of moving it. */
+  touch-action: none;
+  user-select: none;
+}
+
+.dexfil__file:hover {
+  border-color: var(--fg);
+}
+
+.dexfil__file.is-dragging {
+  opacity: 0.35;
+}
+
+.dexfil__file.is-taken {
+  opacity: 0.4;
+  cursor: default;
+  border-style: dashed;
+}
+
+.dexfil__file.is-clean {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.dexfil__file.is-bad {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.dexfil__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.dexfil__meta {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.dexfil__scan {
+  background: transparent;
+  border: 1px solid var(--panel-edge);
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.dexfil__scan:hover {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+
+.dexfil__vault {
+  border: 1px dashed var(--panel-edge);
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  transition: border-color 120ms, background-color 120ms;
+}
+
+.dexfil__vault.is-hot {
+  border-color: var(--ok);
+  border-style: solid;
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--fg-bright);
+}
+
+.dexfil__vault.is-breached {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  animation: dexfil-breach 500ms ease-out;
+}
+
+@keyframes dexfil-breach {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+/* Follows the pointer during a drag. Body-level so it is never clipped by
+   the panel's own overflow. */
+.dexfil__ghost {
+  position: fixed;
+  z-index: 2500;
+  pointer-events: none;
+  background: var(--panel);
+  border: 1px solid var(--fg);
+  color: var(--fg-bright);
+  font-size: 11px;
+  padding: 4px 8px;
+  box-shadow: 0 0 16px -4px var(--glow);
+}
+
+/* ---- reverse hack ---- */
+
+/* A red wash over the whole board while hostile processes are live, so the
+   state is unmistakable even while you keep working the job. */
+.shell.is-reverse-hacked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 550;
+  pointer-events: none;
+  box-shadow: inset 0 0 160px rgba(255, 59, 59, 0.35);
+  animation: reverse-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes reverse-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.win.hostile {
+  border-color: var(--danger);
+  border-width: 2px;
+  z-index: 880 !important;
+  animation: hostile-jitter 2.6s steps(1) infinite;
+}
+
+@keyframes hostile-jitter {
+  0%,
+  92%,
+  100% {
+    transform: translate(0, 0);
+  }
+  94% {
+    transform: translate(-2px, 1px);
+  }
+  96% {
+    transform: translate(2px, -1px);
+  }
+}
+
+.win.hostile .win__title {
+  background: var(--danger);
+  color: #000;
+}
+
+.win.hostile .win__title-text {
+  color: #000;
+  text-shadow: none;
+}
+
+.hostile__log {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--danger);
+  min-height: 4.2em;
+}
+
+.hostile__kill {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 0.4rem;
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+}
+
+.hostile__kill:hover {
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--fg-bright);
+}
+
+.hostile__bar {
+  margin-top: 0.4rem;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.hostile__bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--danger);
+  transform-origin: left center;
+}
+
+.win.hostile.is-killed {
+  animation: hostile-killed 260ms ease-out forwards;
+}
+
+@keyframes hostile-killed {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+.win.hostile.is-breached {
+  animation: hostile-won 400ms ease-out forwards;
+}
+
+@keyframes hostile-won {
+  to {
+    opacity: 0;
+    transform: scale(1.15);
+    filter: brightness(2.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-reverse-hacked::after,
+  .win.hostile {
+    animation: none;
+  }
+}
+
+/* ---- mobile sizing ---- */
+
+[data-layout='mobile'] .dexfil__file {
+  min-height: 46px;
+  font-size: 12px;
+}
+
+[data-layout='mobile'] .dexfil__scan {
+  min-height: 34px;
+  padding: 4px 10px;
+}
+
+[data-layout='mobile'] .dexfil__vault {
+  min-height: 70px;
+}
+
+/* Hostile windows are a timed emergency -- same treatment as threat waves,
+   pinned to the top of the scrolling column so they can't be missed. */
+[data-layout='mobile'] .win.hostile {
+  order: -1;
+}
