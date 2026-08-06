@@ -34,6 +34,8 @@ interface FileEntry {
   tell: string
   scanned: boolean
   taken: boolean
+  /** The contract's objective file. */
+  isArtifact?: boolean
 }
 
 export class DragExfilPanel extends TaskPanel {
@@ -46,6 +48,17 @@ export class DragExfilPanel extends TaskPanel {
 
   /** Set by the shell so a corrupted drop can trigger the reverse hack. */
   static onCorrupted: ((panelId: string) => void) | null = null
+
+  /**
+   * The contract's actual objective file, seeded by the Shell once the run
+   * reaches the job's layer. The next panel built claims it, shows it as a
+   * marked row, and clears the slot -- so the thing named in the brief is a
+   * real object you have to find and pull, not flavour text.
+   */
+  static pendingArtifact: string | null = null
+  static onArtifactSecured: (() => void) | null = null
+
+  private artifactRow: FileEntry | null = null
 
   constructor(manager: WindowManager, ctx: PanelContext) {
     super(manager, ctx, `dragExfil-${hex(ctx.rng, 4)}`, `VAULT PULL ${hex(ctx.rng, 3).toUpperCase()}`)
@@ -87,6 +100,17 @@ export class DragExfilPanel extends TaskPanel {
       remote.appendChild(this.buildFileRow(corrupted))
     }
 
+    // Claim the objective file if one is waiting.
+    const artifact = DragExfilPanel.pendingArtifact
+    if (artifact) {
+      DragExfilPanel.pendingArtifact = null
+      const row = this.buildFileRow(false, artifact)
+      row.classList.add('is-objective')
+      remote.insertBefore(row, remote.firstChild)
+      this.artifactRow = this.files[this.files.length - 1] ?? null
+      if (this.artifactRow) this.artifactRow.isArtifact = true
+    }
+
     this.vault = document.createElement('div')
     this.vault.className = 'dexfil__vault'
     this.vault.innerHTML = '<span class="dexfil__vault-label">LOCAL VAULT</span>'
@@ -96,7 +120,7 @@ export class DragExfilPanel extends TaskPanel {
     this.updateTitle()
   }
 
-  private buildFileRow(corrupted: boolean): HTMLElement {
+  private buildFileRow(corrupted: boolean, forcedName?: string): HTMLElement {
     const base = pick(this.rng, CLEAN_NAMES)
     const ext = pick(this.rng, CLEAN_EXTS)
     const sizeK = corrupted && this.rng() < 0.4 ? int(this.rng, 90_000, 400_000) : int(this.rng, 8, 4000)
@@ -110,7 +134,7 @@ export class DragExfilPanel extends TaskPanel {
       `DOUBLE EXT`,
     ]
     const tell = corrupted ? pick(this.rng, tells) : ''
-    const name = corrupted && tell === 'DOUBLE EXT' ? `${base}.${ext}.exe` : `${base}_${hex(this.rng, 2)}.${ext}`
+    const name = forcedName ?? (corrupted && tell === 'DOUBLE EXT' ? `${base}.${ext}.exe` : `${base}_${hex(this.rng, 2)}.${ext}`)
 
     const row = document.createElement('div')
     row.className = 'dexfil__file'
@@ -242,6 +266,11 @@ export class DragExfilPanel extends TaskPanel {
       this.vault.classList.add('is-breached')
       DragExfilPanel.onCorrupted?.(this.id)
       return
+    }
+
+    if (entry.isArtifact) {
+      this.floatText('OBJECTIVE SECURED')
+      DragExfilPanel.onArtifactSecured?.()
     }
 
     this.pulled += 1

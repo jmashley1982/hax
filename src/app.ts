@@ -4,6 +4,8 @@ import { applyLayerSkin, clearLayerPalette } from '@/themes/themes'
 import { Dashboard } from '@/ui/dashboard/dashboard'
 import { Shell, type SessionOutcome } from '@/ui/shell'
 import { Debrief } from '@/ui/dashboard/debrief'
+import { BootSequence } from '@/ui/bootSequence'
+import { mulberry32 } from '@/core/rng'
 import type { Contract } from '@/sim/contracts'
 
 /**
@@ -23,6 +25,7 @@ export class App {
   private dashboard: Dashboard | null = null
   private session: Shell | null = null
   private debrief: Debrief | null = null
+  private boot: BootSequence | null = null
   private activeContract: Contract | null = null
 
   constructor(private root: HTMLElement, private state: GameState) {
@@ -59,7 +62,18 @@ export class App {
     this.state.integrity = 100
 
     this.activeContract = contract
-    this.session = new Shell(this.root, this.state, contract, (outcome) => this.endSession(outcome))
+
+    // Connect first. The board used to appear fully formed the instant you
+    // picked a job, skipping the one moment the fiction most wants.
+    this.boot = new BootSequence(this.root, {
+      contract,
+      rng: mulberry32(this.state.seed + 77),
+      handle: this.state.handle,
+      onDone: () => {
+        this.boot = null
+        this.session = new Shell(this.root, this.state, contract, (o) => this.endSession(o))
+      },
+    })
   }
 
   /**
@@ -102,6 +116,8 @@ export class App {
   }
 
   private teardownSession(): void {
+    this.boot?.destroy()
+    this.boot = null
     this.session?.destroy()
     this.session = null
   }

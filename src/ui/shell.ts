@@ -118,6 +118,10 @@ export class Shell {
   private scoreAtStart = 0
   private deepestThisRun: LayerId = 'surface'
   private abortPrompt: import('./windows/window').Win | null = null
+  /** EXFILTRATE: true once the objective file has been seeded into a panel. */
+  private artifactSeeded = false
+  /** True once the job's win condition is met and the escape is running. */
+  private extracting = false
   /**
    * Child components are held so destroy() can unhook them. Each of these
    * subscribes to the store or to window events, and removing only their
@@ -185,6 +189,7 @@ export class Shell {
 
     // A corrupted file dropped into the local vault is the player letting
     // them in -- the single most direct route to a reverse hack.
+    DragExfilPanel.onArtifactSecured = () => this.beginExtraction()
     DragExfilPanel.onCorrupted = () => {
       this.integrity.damage(INTEGRITY_COST.corruptedFile)
       this.triggerReverseHack(0.5)
@@ -794,6 +799,75 @@ export class Shell {
     }
   }
 
+  // -- Jobs: the contract's actual win condition -------------------------
+
+  /**
+   * Put the objective file on the board once the run is deep enough.
+   *
+   * Until now `contract.job` only produced a line of text -- there was no
+   * win condition anywhere, so every run ended the one old way (crossing
+   * PHYSICAL) regardless of the job, and the EXFILTRATE briefs that make up
+   * most of the board could never actually be completed.
+   */
+  private maybeSeedArtifact(layer: LayerId): void {
+    if (this.artifactSeeded || this.contract.job.kind !== 'exfiltrate') return
+    if (LAYER_ORDER.indexOf(layer) < LAYER_ORDER.indexOf(this.contract.job.completesAt)) return
+
+    this.artifactSeeded = true
+    DragExfilPanel.pendingArtifact = this.contract.job.artifact
+    store.emit('terminal:line', {
+      text: `>> ${this.contract.job.artifact} LOCATED -- pull it to your vault`,
+      tone: 'success',
+      speed: 1,
+    })
+    this.objective.setJob(`FOUND: ${this.contract.job.artifact} -- pull it`)
+    // Guarantee a vault panel exists to carry it.
+    this.director.spawn()
+  }
+
+  /**
+   * The job is done -- now get out.
+   *
+   * Securing the objective deliberately does NOT end the run. Heat spikes,
+   * they come after you, and the contract only banks if you survive the
+   * escape. That's what gives the debrief something to have been earned.
+   */
+  private beginExtraction(): void {
+    if (this.extracting || this.inFinale || this.destroyed) return
+    this.extracting = true
+
+    this.heat.add(45)
+    awardScore(this.state, 400)
+    store.emit('terminal:line', {
+      text: `==== OBJECTIVE SECURED :: ${this.target.org} KNOWS -- GET OUT ====`,
+      tone: 'danger',
+      speed: 1,
+    })
+    this.objective.setJob('EXTRACTION -- survive and disconnect')
+    this.objective.set('REPEL everything and hold on')
+
+    const kinds: ThreatKind[] = ['traceback', 'reverseShell', 'lockdown']
+    this.runThreatWave(kinds, 6, 13000, (successes) => this.finishExtraction(successes, kinds.length))
+  }
+
+  private finishExtraction(successes: number, total: number): void {
+    if (this.destroyed) return
+    // Clean out even if they were sloppy -- the job is in the bag, the only
+    // question was the exit. Losing the whole contract here would punish
+    // the moment the player just earned.
+    const clean = successes === total
+    awardScore(this.state, clean ? 700 : 260)
+    store.emit('terminal:line', {
+      text: clean
+        ? `==== EXTRACTED CLEAN :: ${this.contract.job.artifact} IS YOURS ====`
+        : `==== OUT, BUT TRACED :: ${this.contract.job.artifact} IS YOURS ====`,
+      tone: 'success',
+      speed: 1,
+    })
+    this.showEndingBanner(clean ? 'CLEAN EXTRACTION' : 'EXTRACTED -- TRACED')
+    this.endContract('completed')
+  }
+
   // -- Reverse hack: they are inside YOUR machine ------------------------
 
   /**
@@ -1120,6 +1194,7 @@ export class Shell {
 
     const next = this.layers.breakthrough()
     this.deepestThisRun = next.id
+    this.maybeSeedArtifact(next.id)
     this.showBreakthroughCard(next, depthIndex, bonus)
     this.breakthroughGraceUntil = this.elapsedMs + BREAKTHROUGH_GRACE_MS
 

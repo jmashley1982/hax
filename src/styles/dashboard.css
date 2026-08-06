@@ -504,3 +504,76 @@
 @media (prefers-reduced-motion: reduce) {
   .debrief { animation: none; }
 }
+
+/* ---- BOOT SEQUENCE (JACK IN -> the board) ---- */
+
+.boot {
+  position: absolute;
+  inset: 0;
+  z-index: 2400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-deep);
+  padding: 1.5rem 1rem;
+}
+
+.boot.is-closing { animation: boot-out 260ms ease-in forwards; }
+@keyframes boot-out { to { opacity: 0; } }
+
+.boot__frame {
+  width: min(94vw, 560px);
+  border: 1px solid var(--fg);
+  background: var(--panel);
+  padding: 1rem 1.1rem;
+  box-shadow: 0 0 50px -12px var(--glow);
+}
+
+.boot__head {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--fg-bright);
+  border-bottom: 1px solid var(--panel-edge);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.boot__log {
+  min-height: 11em;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--fg-dim);
+}
+
+.boot__log .is-ok { color: var(--ok); text-shadow: 0 0 8px var(--glow); }
+
+.boot__log div:last-child::after {
+  content: '\2588';
+  margin-left: 3px;
+  animation: term-cursor-blink var(--cursor-blink-ms) steps(1) infinite;
+  color: var(--fg);
+}
+
+.boot__bar {
+  height: 3px;
+  margin-top: 0.7rem;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.boot__bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--fg);
+  transform: scaleX(0);
+  transform-origin: left center;
+  box-shadow: 0 0 10px var(--glow);
+}
+
+.boot__skip {
+  margin-top: 0.6rem;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--fg-dim);
+  text-align: right;
+}

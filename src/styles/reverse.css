@@ -464,3 +464,17 @@
 }
 
 [data-layout='mobile'] .docwin { max-width: 100%; }
+
+/* The contract's objective file: unmistakable among the decoys. */
+.dexfil__file.is-objective {
+  border-color: var(--warn);
+  box-shadow: 0 0 12px -3px var(--warn);
+}
+
+.dexfil__file.is-objective .dexfil__name { color: var(--warn); }
+
+.dexfil__file.is-objective::before {
+  content: '★';
+  color: var(--warn);
+  margin-right: 2px;
+}
