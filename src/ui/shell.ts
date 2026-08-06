@@ -49,7 +49,8 @@ import { pickAmbientKind } from '@/sim/layers'
 import { Chain } from './chain/chain'
 import { Messenger, type Offer } from './messenger'
 import { Manhunt } from './manhunt'
-import { TokenPouch, type Token } from '@/sim/tokens'
+import { FieldOp } from './fieldOp'
+import { TokenPouch, makeToken, type Token } from '@/sim/tokens'
 import { BoardBudget } from '@/sim/boardBudget'
 import { DesktopLayout } from './desktop/layout'
 import { DesktopIcons } from './desktop/icons'
@@ -138,6 +139,21 @@ export class Shell {
   /** At most one interactive chain at a time -- two would just be noise. */
   private chain: Chain | null = null
   private nextChainAt = 14_000
+  /** The courier beat. At most one per run -- see tickFieldOp. */
+  private fieldOp: FieldOp | null = null
+  private fieldOpFired = false
+  /** Edge-tracked so the objective bar is claimed once, not every frame. */
+  private fieldOpCritical = false
+  /**
+   * When the courier beat may first fire.
+   *
+   * Traced on a real run: the board reaches INTRANET around 18s, a
+   * reverse hack lands around 42s and then blocks every retry until the
+   * contract ends at ~73s. So the only window this beat has is roughly
+   * 20-40 seconds in, and 40s (let alone the original 70s) meant it
+   * simply never happened.
+   */
+  private nextFieldOpAt = 26_000
   /** Set while a trojan bypass is burning, which suppresses their controls. */
   private bypassUntilMs = 0
   /** The docked buddy list. Always present; occasionally saves the run. */
@@ -410,6 +426,8 @@ export class Shell {
     this.pending = []
     this.chain?.destroy()
     this.chain = null
+    this.fieldOp?.destroy()
+    this.fieldOp = null
     this.manhunt?.destroy()
     this.manhunt = null
     this.messenger.destroy()
@@ -657,7 +675,7 @@ export class Shell {
     // the contract is not the objective, staying anonymous is. Letting a
     // panel title overwrite "STAY ANONYMOUS" reads as the game not knowing
     // what is happening to you.
-    if (this.waveActive || this.manhunt?.active) return
+    if (this.waveActive || this.manhunt?.active || this.fieldOp?.critical) return
     if (!this.targetPanel) {
       this.objective.set('scanning for targets...')
       return
@@ -682,6 +700,13 @@ export class Shell {
     // Every mode now accepts mashing -- the old INTENT mode made raw
     // keystrokes inert, which is indistinguishable from a broken game.
     this.markInput()
+
+    // The transfer window owns every keystroke while it is open. It is a
+    // few seconds long and it is the whole point of the beat.
+    if (this.fieldOp?.critical) {
+      this.fieldOp.pushTransfer()
+      return
+    }
 
     // Active threats claim the keystroke first -- "you have to break their
     // attempt" needs to be the most urgent thing on screen, not something
@@ -887,6 +912,7 @@ export class Shell {
     this.tickReverseRoll()
     this.manhunt?.tick(dt)
     this.tickChains(dt)
+    this.tickFieldOp(dt)
     this.director.tick(dt, !isInteracting())
     for (const panel of this.director.activePanels) {
       if (panel instanceof BruteForcePanel) panel.tickDecay(dt)
@@ -950,6 +976,7 @@ export class Shell {
           this.ejecting ||
           this.waveActive ||
           !!this.manhunt?.active ||
+          !!this.fieldOp?.critical ||
           this.activeThreats.length > 0,
       )
     ) {
@@ -965,7 +992,7 @@ export class Shell {
     // texture, and suppressing those too would just make the screen go dead
     // for half a minute at the exact moment the player is meant to be
     // moving fastest.
-    const bypassing = this.elapsedMs < this.bypassUntilMs
+    const bypassing = this.elapsedMs < this.bypassUntilMs || !!this.fieldOp?.critical
     if (!this.inFinale && !this.ejecting) {
       if (!bypassing) {
         const wave = this.counterHack.tick(
@@ -997,6 +1024,7 @@ export class Shell {
     // Nothing ambient opens while the player is mid-drag, during a reverse
     // hack (the screen is already full of hostiles) or during a manhunt.
     if (isInteracting() || this.reverseHack?.active || this.manhunt?.active) return
+    if (this.fieldOp?.critical) return
     if (!this.processSpawner.tick(this.elapsedMs, this.state.layer, this.layers.tension)) return
 
     const draws = burstSize(this.state.layer, this.rng)
@@ -1121,6 +1149,7 @@ export class Shell {
    * escape. That's what gives the debrief something to have been earned.
    */
   private beginExtraction(): void {
+    this.fieldOp?.abort('extraction started')
     if (this.extracting || this.inFinale || this.destroyed) return
     this.extracting = true
 
@@ -1229,6 +1258,7 @@ export class Shell {
    * Career score is kept -- the agreed cost is the job, not the run history.
    */
   private handleOverrun(): void {
+    this.fieldOp?.abort('workstation overrun')
     if (this.destroyed || this.inFinale) return
     this.reverseHack?.destroy()
     this.reverseHack = null
@@ -1263,6 +1293,7 @@ export class Shell {
    * moment in the game the one players least want to see.
    */
   private beginLockout(): void {
+    this.fieldOp?.abort('terminal seized')
     if (this.lockout) return
     this.integrity.damage(INTEGRITY_COST.lockout)
     this.reverseHack?.destroy()
@@ -1399,6 +1430,7 @@ export class Shell {
    * here).
    */
   private handleEjection(): void {
+    this.fieldOp?.abort('connection lost')
     if (this.inFinale || this.ejecting || this.manhunt?.active) return
     this.ejecting = true
 
@@ -1585,6 +1617,83 @@ export class Shell {
     this.messenger.raiseOffer(kind)
   }
 
+  /**
+   * The field op: once per run, INTRANET or deeper.
+   *
+   * `fieldOpFired` is set at CONSTRUCTION, not on completion, so an op
+   * that gets aborted by a lockout cannot retrigger. It is a plain
+   * instance field, so it resets with the session -- a static here would
+   * be the same class of bug as the artifact leak.
+   */
+  private tickFieldOp(dt: number): void {
+    if (this.fieldOp && !this.fieldOp.active) {
+      this.fieldOp = null
+      this.fieldOpCritical = false
+      this.renderObjective()
+    }
+    this.fieldOp?.tick(dt)
+
+    // The transfer takes the objective bar for its few seconds. The
+    // inbound phase can run for half a minute, so a counter-intrusion
+    // wave often starts underneath it and had already claimed the bar --
+    // leaving "REPEL ALL 4" on screen while the actual demand was a
+    // ten-second transfer.
+    const critical = !!this.fieldOp?.critical
+    if (critical !== this.fieldOpCritical) {
+      this.fieldOpCritical = critical
+      if (critical) this.objective.set('RUN THE TRANSFER -- MASH IT')
+      else this.renderObjective()
+    }
+    if (this.fieldOp || this.fieldOpFired) return
+    if (this.elapsedMs < this.nextFieldOpAt) return
+
+    if (
+      this.lockout ||
+      this.waveActive ||
+      this.inFinale ||
+      this.ejecting ||
+      this.extracting ||
+      this.manhunt?.active ||
+      this.reverseHack?.active ||
+      // Only a chain that is mid-SCAN blocks. Excluding any live chain at
+      // all meant the field op essentially never fired: chains open at 14s
+      // and run for the best part of a minute, so "no chain active" was
+      // almost never true.
+      this.chain?.stage === 'scanner' ||
+      this.windows.hasModal
+    ) {
+      // Retry briskly: a deferral used to cost 8 seconds of a window that
+      // is only about 20 seconds wide.
+      this.nextFieldOpAt = this.elapsedMs + 4000
+      return
+    }
+    if (LAYER_ORDER.indexOf(this.state.layer) < 2) {
+      this.nextFieldOpAt = this.elapsedMs + 5000
+      return
+    }
+
+    this.fieldOpFired = true
+    this.fieldOp = new FieldOp({
+      manager: this.windows,
+      rng: this.rng,
+      org: this.target.org,
+      mode: this.mode,
+      cb: {
+        line: (text, tone) => store.emit('terminal:line', { text, tone, speed: 0 }),
+        onSuccess: () => {
+          awardScore(this.state, 900)
+          this.heat.add(-35)
+          this.integrity.repair(10)
+          this.grantToken(makeToken(this.rng, this.rng() < 0.5 ? 'skeleton' : 'trojan'))
+        },
+        onFailure: () => {
+          this.heat.add(25)
+          this.integrity.damage(12)
+        },
+      },
+    })
+  }
+
   // -- interactive chains + earned tokens --------------------------------
 
   /**
@@ -1608,6 +1717,7 @@ export class Shell {
       this.inFinale ||
       this.ejecting ||
       this.manhunt?.active ||
+      this.fieldOp?.critical ||
       this.reverseHack?.active
     ) {
       this.nextChainAt = this.elapsedMs + 6000
@@ -1871,6 +1981,7 @@ export class Shell {
    * stays replayable instead of dead-ending.
    */
   private handleFinale(): void {
+    this.fieldOp?.abort('contract closing')
     if (this.inFinale) return
     this.inFinale = true
 
