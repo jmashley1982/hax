@@ -51,6 +51,7 @@ import { Manhunt } from './manhunt'
 import { TokenPouch, type Token } from '@/sim/tokens'
 import { BoardBudget } from '@/sim/boardBudget'
 import { DesktopLayout } from './desktop/layout'
+import { DesktopIcons } from './desktop/icons'
 import type { TaskPanel } from './panels/panel'
 
 const BREAKTHROUGH_GRACE_MS = 2500
@@ -162,6 +163,7 @@ export class Shell {
   private budget: BoardBudget
   /** The four desktop regions. Every surface mounts into one of them. */
   private desk!: DesktopLayout
+  private icons!: DesktopIcons
   /**
    * Child components are held so destroy() can unhook them. Each of these
    * subscribes to the store or to window events, and removing only their
@@ -248,6 +250,13 @@ export class Shell {
           this.integrity.damage(INTEGRITY_COST.corruptedFile)
           this.triggerReverseHack(0.5)
         },
+        onPurged: (file) => {
+          // Shredding a file you proved was bad is the intended play, so
+          // it pays. Losing a clean one costs you the file, which is
+          // punishment enough.
+          if (file.corrupted) this.integrity.repair(3)
+          this.icons.addToTrash(file)
+        },
       },
     )
     // Panels get the lion's share of the budget; the remainder is what
@@ -255,6 +264,26 @@ export class Shell {
     // total on screen cannot run away.
     this.director.setBudgetProvider(() => Math.max(3, this.budget.capacity - 2))
 
+    this.icons = new DesktopIcons(this.desk.bar, {
+      manager: this.windows,
+      intel: contract.intel,
+      org: contract.facts.org,
+      line: (text) => store.emit('terminal:line', { text, tone: 'system', speed: 0 }),
+      onEmptied: (n) => {
+        awardScore(this.state, 40 * n)
+        this.integrity.repair(Math.min(12, 2 * n))
+      },
+      onWipe: () => {
+        this.heat.add(-40)
+        store.emit('terminal:line', {
+          text: '>> wipe.sh -- logs scrubbed, their trace is cold',
+          tone: 'success',
+          speed: 0,
+        })
+        return true
+      },
+      suppressedCount: () => this.budget.suppressedCount,
+    })
     this.mountStatusBar(this.desk.bar)
     this.bindTargeting()
     this.bindModeHotkey()
@@ -394,6 +423,7 @@ export class Shell {
     this.crt.destroy()
     this.prompt.destroy()
     this.hud.destroy()
+    this.icons.destroy()
     this.desk.destroy()
     clock.stop()
     this.shellEl.remove()
@@ -1584,6 +1614,7 @@ export class Shell {
         repair: (n) => this.integrity.repair(n),
         coolHeat: (n) => this.heat.add(-n),
         grantToken: (t) => this.grantToken(t),
+        onPurge: (n) => this.icons.addManyToTrash(n, 'flagged'),
       },
     })
   }

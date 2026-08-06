@@ -9,6 +9,7 @@ import { unlockedPanelTypes, type LayerSystem } from './layers'
 export interface DirectorHooks {
   onArtifactSecured?: () => void
   onCorrupted?: (panelId: string) => void
+  onPurged?: (file: { name: string; corrupted: boolean }) => void
 }
 
 /**
@@ -139,6 +140,7 @@ export class Director {
       artifact,
       onArtifactSecured: this.hooks.onArtifactSecured,
       onCorrupted: this.hooks.onCorrupted,
+      onPurged: this.hooks.onPurged,
       // Size/complexity comes from depth first, tension second -- so deep
       // panels are visibly denser than shallow ones regardless of timing.
       intensity: Math.min(1, this.layers.current.sizeBias * 0.7 + this.layers.tension * 0.3),

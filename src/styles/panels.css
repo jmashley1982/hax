@@ -15,6 +15,24 @@
   scrollbar-width: thin;
 }
 
+/*
+ * A panel that declared extra height gets to use it.
+ *
+ * The .panel cap above lives in panels.css, which is imported AFTER
+ * windows.css, so the generic `.win--span-1x2 .win__body` rule lost the
+ * tie on equal specificity and every panel stayed capped at 162px. On the
+ * vault-pull panel that was not cosmetic: its body is 325px of content,
+ * so the LOCAL VAULT drop zone sat below the scroll edge entirely --
+ * measured at y=362 with the body ending at y=288 -- and dragging a file
+ * onto a target that is not on screen simply never registers. Drag-to-
+ * vault, the mechanic the panel exists for, did not work at all.
+ */
+.panel.win--span-1x2 .win__body,
+.panel.win--span-2x1 .win__body,
+.panel.win--span-2x2 .win__body {
+  max-height: 420px;
+}
+
 .panel {
   min-width: 260px;
   max-width: 292px;

@@ -19,7 +19,7 @@
 
 .dexfil__file {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 0.5rem;
   background: var(--bg-deep);
@@ -521,4 +521,35 @@
 
 @media (prefers-reduced-motion: reduce) {
   .shell.is-idle-bleed::after { animation: none; }
+}
+
+/* PURGE: only offered once a scan has proved the file bad. */
+.dexfil__purge {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.dexfil__purge:hover {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: var(--fg-bright);
+}
+
+.dexfil__file.is-purged {
+  animation: dexfil-purge 220ms ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes dexfil-purge {
+  to { opacity: 0; transform: translateX(-14px); }
+}
+
+[data-layout='mobile'] .dexfil__purge {
+  min-height: 34px;
+  padding: 4px 10px;
 }

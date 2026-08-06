@@ -33,7 +33,16 @@ interface FileEntry {
   corrupted: boolean
   tell: string
   scanned: boolean
+  /** In the vault. NOT the same as gone -- see `purged`. */
   taken: boolean
+  /**
+   * Shredded off the remote share.
+   *
+   * Deliberately separate from `taken`: that flag means "you secured
+   * this", and scan/startDrag/drop all gate on it. Reusing it for
+   * purging would make a destroyed file read as a successful pull.
+   */
+  purged: boolean
   /** The contract's objective file. */
   isArtifact?: boolean
 }
@@ -56,7 +65,16 @@ export class DragExfilPanel extends TaskPanel {
   private artifactRow: FileEntry | null = null
 
   constructor(manager: WindowManager, ctx: PanelContext) {
-    super(manager, ctx, `dragExfil-${hex(ctx.rng, 4)}`, `VAULT PULL ${hex(ctx.rng, 3).toUpperCase()}`)
+    // Two slots tall: this panel is a file list plus a drop zone, and at
+    // one slot the last rows sat below the body's scroll edge -- invisible
+    // and undraggable on the one panel where dragging is the mechanic.
+    super(
+      manager,
+      ctx,
+      `dragExfil-${hex(ctx.rng, 4)}`,
+      `VAULT PULL ${hex(ctx.rng, 3).toUpperCase()}`,
+      { cols: 1, rows: 2 },
+    )
     this.hooks = ctx
     this.init()
   }
@@ -146,11 +164,27 @@ export class DragExfilPanel extends TaskPanel {
     scan.className = 'dexfil__scan'
     scan.textContent = 'SCAN'
 
-    row.append(label, meta, scan)
+    // PURGE appears only once a row is scanned AND known bad -- see
+    // refreshPurge(). Correctly identifying a corrupted file previously
+    // rewarded you with nothing but the absence of a mistake; this is the
+    // disposal verb that was missing.
+    const purge = document.createElement('button')
+    purge.className = 'dexfil__purge'
+    purge.textContent = 'PURGE'
+    purge.hidden = true
 
-    const entry: FileEntry = { el: row, name, corrupted, tell, scanned: false, taken: false }
+    row.append(label, meta, scan, purge)
+
+    const entry: FileEntry = { el: row, name, corrupted, tell, scanned: false, taken: false, purged: false }
     this.files.push(entry)
 
+    // Both guards are load-bearing: the row's own pointerdown starts a
+    // drag, and the shell has a delegated targeting listener on .panel.
+    purge.addEventListener('pointerdown', (e) => e.stopPropagation())
+    purge.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.purge(entry)
+    })
     scan.addEventListener('pointerdown', (e) => e.stopPropagation())
     scan.addEventListener('click', (e) => {
       e.stopPropagation()
@@ -163,8 +197,9 @@ export class DragExfilPanel extends TaskPanel {
 
   /** Reveals the truth outright -- the price is the time it costs you. */
   private scan(entry: FileEntry): void {
-    if (entry.scanned || entry.taken) return
+    if (entry.scanned || entry.taken || entry.purged) return
     entry.scanned = true
+    this.refreshPurge(entry)
     entry.el.classList.add(entry.corrupted ? 'is-bad' : 'is-clean')
     const meta = entry.el.querySelector('.dexfil__meta') as HTMLElement | null
     if (meta) meta.textContent = entry.corrupted ? entry.tell : 'CLEAN'
@@ -174,7 +209,7 @@ export class DragExfilPanel extends TaskPanel {
   // -- pointer dragging (works for mouse AND touch) -----------------------
 
   private startDrag(e: PointerEvent, entry: FileEntry): void {
-    if (entry.taken || this.isDone) return
+    if (entry.taken || entry.purged || this.isDone) return
     e.preventDefault()
     this.dragging = entry
     entry.el.classList.add('is-dragging')
@@ -250,8 +285,51 @@ export class DragExfilPanel extends TaskPanel {
     this.drop(entry)
   }
 
+  /** Show PURGE once the player knows the file is bad. */
+  private refreshPurge(entry: FileEntry): void {
+    const btn = entry.el.querySelector<HTMLElement>('.dexfil__purge')
+    if (!btn) return
+    btn.hidden = !(entry.scanned && entry.corrupted) || entry.taken || entry.purged
+  }
+
+  /**
+   * Shred a file off the remote share.
+   *
+   * The completion arithmetic is the trap here. `needed` is fixed in
+   * buildBody, and the panel completes purely by addProgress(1/needed)
+   * accumulating to the base class's 0.999 epsilon -- and Director.tick
+   * only ever drops panels that are `isDone`. So a panel that can no
+   * longer reach 1.0 sits on the board occupying a slot FOREVER.
+   *
+   * Purging a corrupted file is free (bad files were never part of
+   * `needed`). Purging a clean one has to shrink the requirement and
+   * re-derive progress from pulled/needed rather than incrementing, or
+   * the panel becomes mathematically uncompletable.
+   *
+   * Note buildBody adds the artifact row on top of `total` WITHOUT
+   * incrementing `needed`, so an artifact run legitimately has one spare
+   * clean file -- the max(1, ...) floor keeps that safe either way.
+   */
+  private purge(entry: FileEntry): void {
+    if (entry.taken || entry.purged || this.isDone) return
+    entry.purged = true
+    entry.el.classList.add('is-purged')
+    this.floatText(entry.corrupted ? 'PURGED' : 'LOST')
+    this.pulse()
+
+    if (!entry.corrupted) {
+      this.needed = Math.max(1, this.needed - 1)
+      this.updateTitle()
+      const want = Math.min(1, this.pulled / this.needed)
+      this.addProgress(Math.max(0, want - this.progress))
+    }
+
+    this.hooks.onPurged?.({ name: entry.name, corrupted: entry.corrupted })
+    setTimeout(() => entry.el.remove(), 220)
+  }
+
   private drop(entry: FileEntry): void {
-    if (entry.taken || this.isDone) return
+    if (entry.taken || entry.purged || this.isDone) return
     entry.taken = true
     entry.el.classList.add('is-taken')
 

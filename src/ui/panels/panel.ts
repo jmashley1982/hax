@@ -51,6 +51,8 @@ export interface PanelContext {
   onArtifactSecured?: () => void
   /** Fired when a corrupted file reaches the vault -- triggers the reverse hack. */
   onCorrupted?: (panelId: string) => void
+  /** Fired when a file is shredded off the remote share -- fills the desktop trash. */
+  onPurged?: (file: { name: string; corrupted: boolean }) => void
 }
 
 export abstract class TaskPanel {
@@ -71,14 +73,25 @@ export abstract class TaskPanel {
   private sealEl: HTMLElement | null = null
   private lastTouched = 0
 
-  constructor(manager: WindowManager, ctx: PanelContext, id: string, title: string) {
+  constructor(
+    manager: WindowManager,
+    ctx: PanelContext,
+    id: string,
+    title: string,
+    /**
+     * Slots this panel occupies. Most are 1x1; a panel whose body is a
+     * LIST needs the height, or its last rows scroll out of reach -- and
+     * on the vault-pull panel those rows are the thing you have to drag.
+     */
+    span?: { cols: number; rows: number },
+  ) {
     this.id = id
     this.ctx = ctx
     this.rng = ctx.rng
     this.intensity = ctx.intensity
     this.titleBase = title
 
-    this.win = manager.spawn({ title, modal: false, closable: false, pinned: true }, 'random')
+    this.win = manager.spawn({ title, modal: false, closable: false, pinned: true, span }, 'random')
     this.win.el.classList.add('panel')
     this.win.el.dataset.panelId = id
 

@@ -37,6 +37,8 @@ export interface ChainCallbacks {
   repair: (amount: number) => void
   coolHeat: (amount: number) => void
   grantToken: (token: Token) => void
+  /** Only for the PURGE-flavoured chain: the flagged files go in the bin. */
+  onPurge?: (count: number) => void
 }
 
 export interface ChainOptions {
@@ -58,6 +60,8 @@ interface ChainTheme {
   /** The affirmative button. */
   act: string
   reward: TokenKind
+  /** True when acting on this chain destroys files -- they land in the trash. */
+  purges?: boolean
 }
 
 const THEMES: readonly ChainTheme[] = [
@@ -66,6 +70,7 @@ const THEMES: readonly ChainTheme[] = [
     hunting: 'poisoned files in the export queue',
     found: '{n} FILES FLAGGED -- PAYLOAD SIGNATURES MATCH',
     act: 'PURGE',
+    purges: true,
     reward: 'skeleton',
   },
   {
@@ -360,6 +365,7 @@ export class Chain {
 
     cb.repair(8)
     cb.coolHeat(14)
+    if (this.theme.purges) cb.onPurge?.(this.foundCount)
     const token = makeToken(rng, this.theme.reward)
     cb.grantToken(token)
     cb.line(`${this.theme.act} COMPLETE -- ${token.label} RECOVERED :: ${token.code}`, 'success')

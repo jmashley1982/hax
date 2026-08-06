@@ -220,3 +220,130 @@
 }
 
 
+
+/* ---- desktop icons in the taskbar ---- */
+
+.icons {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+
+.icons__icon {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 3px 6px;
+  min-height: 26px;
+  cursor: pointer;
+}
+
+.icons__icon:hover {
+  border-color: var(--fg);
+  color: var(--fg-bright);
+}
+
+.icons__glyph {
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* A full bin is the whole point of the PURGE loop -- it has to be
+   visible from across the desktop, not a quiet label change. */
+.icons__icon.is-full {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+}
+
+.icons__icon.is-spent {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The board budget turns ambient popups away when the desk is full.
+   Saying so makes a deliberate lull read as the system holding traffic
+   back rather than as the game going quiet. */
+.icons__held {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--fg-dim);
+  opacity: 0.7;
+}
+
+.icons__held:empty { display: none; }
+
+/* ---- trash + readme windows ---- */
+
+.trashwin__body,
+.readmewin__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.readmewin__body {
+  white-space: pre-wrap;
+  color: var(--fg);
+}
+
+.trashwin__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.trashwin__row {
+  font-size: 10px;
+  color: var(--fg-dim);
+  border-bottom: 1px dotted var(--panel-edge);
+  padding-bottom: 1px;
+}
+
+.trashwin__row.is-bad { color: var(--danger); }
+
+.trashwin__list.is-shredding {
+  animation: trash-shred 700ms ease-in forwards;
+}
+
+@keyframes trash-shred {
+  to { opacity: 0; transform: scaleY(0.1); filter: blur(2px); }
+}
+
+.trashwin__empty {
+  color: var(--fg-dim);
+  font-style: italic;
+}
+
+.trashwin__empty-btn {
+  min-height: 36px;
+  background: transparent;
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.trashwin__empty-btn:hover {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--fg-bright);
+}
+
+.trashwin__empty-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+[data-layout='mobile'] .icons__label { display: none; }
