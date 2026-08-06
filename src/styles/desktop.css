@@ -184,23 +184,39 @@
 /* ---- mobile: regions linearise into the scrolling column ---- */
 
 [data-layout='mobile'] .desk {
-  position: static;
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  min-height: 100%;
   background-image: none;
 }
 
+/* Only the work region scrolls; the bars stay put, which is what a phone
+   expects and what keeps the objective and the prompt reachable. */
+[data-layout='mobile'] .desk__top,
+[data-layout='mobile'] .desk__bar {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+[data-layout='mobile'] .desk__work {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
 [data-layout='mobile'] .desk__rail {
+  flex: 0 0 auto;
   border-right: none;
-  border-bottom: 1px solid var(--panel-edge);
-  max-height: 34vh;
+  border-bottom: 2px solid var(--panel-edge);
+  max-height: 26vh;
 }
 
 [data-layout='mobile'] .desk__menu {
   display: none;
 }
 
-[data-layout='mobile'] .desk__work {
-  overflow: visible;
-}
+

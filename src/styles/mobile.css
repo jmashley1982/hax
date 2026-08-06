@@ -21,15 +21,17 @@
 /* ---- the board becomes a scrolling column ---- */
 
 [data-layout='mobile'] .win-layer {
-  position: absolute;
-  inset: 0;
+  position: static;
   /* --board-top is measured from the live HUD at runtime (shell.ts's
      bindBoardOffset), not guessed. A fixed value can't be right at every
      width: the HUD wraps to an extra line on a 320px screen, and a
      hardcoded padding that cleared it on a 390px phone left the BREACH and
      HEAT bars hidden behind the first panel on an iPhone SE. The fallback
      only applies for the first frame before the measurement lands. */
-  padding: var(--board-top, 5.4rem) 0.6rem calc(8.5rem + env(safe-area-inset-bottom));
+  /* The TOP region physically occupies its own space now, so the board no
+     longer has to reserve room for a floating HUD -- --board-top was a
+     runtime measurement of an overlay that no longer overlays anything. */
+  padding: 0.6rem 0.6rem calc(9rem + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -151,24 +153,29 @@
 
 /* ---- chrome ---- */
 
+/*
+ * The desktop regions own layout now, so every mobile rule that used to
+ * position a surface absolutely has to stop -- otherwise those offsets
+ * apply to a flex child and shove it out of its region. That is exactly
+ * what happened: the HUD, objective and terminal all landed on top of the
+ * messenger while the status bar floated into the middle of the screen.
+ */
 [data-layout='mobile'] .terminal {
-  /* Full-width dim backdrop behind the stack rather than a side strip
-     that would eat half a phone screen. */
-  top: 0;
-  bottom: 0;
-  width: 100%;
-  padding: 4.4rem 0.8rem 8rem;
-  opacity: 0.16;
+  inset: auto;
+  width: auto;
+  padding: 4px 8px;
+  opacity: 0.5;
   font-size: 10px;
   mask-image: none;
+  flex: 1 1 40%;
 }
 
 [data-layout='mobile'] .objective {
-  top: 0.5rem;
-  left: 0.6rem;
-  right: 0.6rem;
+  inset: auto;
   max-width: none;
   font-size: 11px;
+  flex-basis: 100%;
+  order: -1;
 }
 
 [data-layout='mobile'] .objective__text {
@@ -184,9 +191,9 @@
    On mobile it becomes a compact wrapping row instead, which fits in two
    short lines above the board. */
 [data-layout='mobile'] .hud {
-  top: 1.9rem;
-  right: 0.6rem;
-  left: 0.6rem;
+  inset: auto;
+  margin-left: 0;
+  width: 100%;
   font-size: 10px;
   flex-direction: row;
   flex-wrap: wrap;
@@ -222,10 +229,12 @@
 
 /* The fake command line collides with the breach pad's thumb zone, and it
    is pure decoration -- fold it into the status strip instead. */
+/* The fake command line is pure decoration and it was making the taskbar
+   wrap to ~170px on a phone, which pushed the bar up under the breach pad
+   -- the pad is the primary control, so the decoration goes. */
 [data-layout='mobile'] .prompt {
-  left: 0.6rem;
-  right: 0.6rem;
-  bottom: calc(6.6rem + env(safe-area-inset-bottom));
+  display: none;
+  inset: auto;
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
@@ -269,10 +278,13 @@
 }
 
 [data-layout='mobile'] .breach-pad {
-  position: absolute;
+  /* Fixed to the viewport, and clear of the desktop's taskbar. The pad is
+     the primary control on a phone; the bar underneath it now physically
+     exists, so the old 1.6rem offset put the pad on top of ABORT. */
+  position: fixed;
   left: 0.6rem;
   right: 0.6rem;
-  bottom: calc(1.6rem + env(safe-area-inset-bottom));
+  bottom: calc(3.4rem + env(safe-area-inset-bottom));
   z-index: 1200;
   display: flex;
   flex-direction: column;
