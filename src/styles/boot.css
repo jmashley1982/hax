@@ -1,0 +1,266 @@
+/* ============================================================
+   BOOT SEQUENCE (ui/bootSequence.ts)
+   JACK IN -> recon -> relay choice -> breach -> the board.
+
+   Lifted out of dashboard.css when the sequence grew three acts: it is
+   its own full-screen state, not a dashboard component, and the relay
+   chooser needs real interactive chrome rather than log styling.
+   ============================================================ */
+
+.boot {
+  position: absolute;
+  inset: 0;
+  z-index: 2400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-deep);
+  padding: 1.5rem 1rem;
+}
+
+.boot.is-closing { animation: boot-out 260ms ease-in forwards; }
+@keyframes boot-out { to { opacity: 0; } }
+
+.boot__frame {
+  width: min(94vw, 560px);
+  border: 1px solid var(--fg);
+  background: var(--panel);
+  padding: 1rem 1.1rem;
+  box-shadow: 0 0 50px -12px var(--glow);
+}
+
+.boot__head {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--fg-bright);
+  border-bottom: 1px solid var(--panel-edge);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+/* Act-specific furniture. Fixed minimum height so the frame does not jump
+   between acts -- a box that resizes three times reads as broken. */
+.boot__stage {
+  min-height: 6.4em;
+  margin-bottom: 0.6rem;
+}
+
+/* -- act 1: the target as an object ---------------------------------- */
+
+.boot__mark {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.boot__mark-glyph {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--fg);
+  color: var(--fg-bright);
+  font-size: 17px;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 12px var(--glow);
+  box-shadow: inset 0 0 18px -6px var(--glow);
+}
+
+.boot__mark-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.boot__mark-org {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--fg-bright);
+}
+
+.boot__mark-sub {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--fg-dim);
+}
+
+.boot__mark-tier {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--accent-2);
+}
+
+/* -- act 2: the hop chain and the exit nodes -------------------------- */
+
+.boot__chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.boot__hop {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  border: 1px solid var(--panel-edge);
+  padding: 2px 5px;
+  animation: boot-hop-in 260ms ease-out;
+}
+
+/* The arrow is on the separator, not the node, so the chain reads as a
+   route rather than a list. */
+.boot__hop + .boot__hop::before {
+  content: '\2192';
+  margin: 0 5px 0 -1px;
+  color: var(--accent-2);
+}
+
+@keyframes boot-hop-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.boot__relays {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.boot__relay {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'name lat' 'note note';
+  gap: 1px 8px;
+  text-align: left;
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--fg);
+  font-family: inherit;
+  padding: 6px 8px;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.boot__relay:hover:not(:disabled) {
+  border-color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+
+.boot__relay:disabled { cursor: default; opacity: 0.4; }
+
+.boot__relay.is-chosen {
+  opacity: 1;
+  border-color: var(--ok);
+  color: var(--fg-bright);
+  box-shadow: 0 0 14px -4px var(--ok);
+}
+
+.boot__relay-name {
+  grid-area: name;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.boot__relay-lat {
+  grid-area: lat;
+  font-size: 11px;
+  color: var(--accent-2);
+}
+
+.boot__relay-note {
+  grid-area: note;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+}
+
+/* -- act 3 ------------------------------------------------------------ */
+
+.boot__engage-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 6.4em;
+}
+
+.boot__engage {
+  background: transparent;
+  border: 2px solid var(--ok);
+  color: var(--ok);
+  font-family: inherit;
+  font-size: 15px;
+  letter-spacing: 0.24em;
+  padding: 12px 20px;
+  cursor: pointer;
+  animation: boot-engage-pulse 900ms ease-in-out infinite;
+}
+
+.boot__engage:hover {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--fg-bright);
+}
+
+@keyframes boot-engage-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  50% { box-shadow: 0 0 22px -4px var(--ok); }
+}
+
+/* -- shared ------------------------------------------------------------ */
+
+.boot__log {
+  min-height: 7.6em;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--fg-dim);
+}
+
+.boot__log .is-ok { color: var(--ok); text-shadow: 0 0 8px var(--glow); }
+
+.boot__log div:last-child::after {
+  content: '\2588';
+  margin-left: 3px;
+  animation: term-cursor-blink var(--cursor-blink-ms) steps(1) infinite;
+  color: var(--fg);
+}
+
+.boot__bar {
+  height: 3px;
+  margin-top: 0.7rem;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.boot__bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--fg);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 420ms ease-out;
+  box-shadow: 0 0 10px var(--glow);
+}
+
+.boot__skip {
+  margin-top: 0.6rem;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--fg-dim);
+  text-align: right;
+}
+
+/* Thumbs, not a mouse: the relay rows are the only tap targets here and
+   they must clear the 44px minimum. */
+[data-layout='mobile'] .boot__relay { min-height: 48px; }
+[data-layout='mobile'] .boot__engage { font-size: 13px; padding: 14px 16px; }
+[data-layout='mobile'] .boot__mark-glyph { width: 44px; height: 44px; font-size: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .boot__hop,
+  .boot__engage { animation: none; }
+  .boot__bar-fill { transition: none; }
+}

@@ -69,8 +69,13 @@ export class App {
       contract,
       rng: mulberry32(this.state.seed + 77),
       handle: this.state.handle,
-      onDone: () => {
+      onDone: (result) => {
         this.boot = null
+        // The exit relay chosen during the boot is the run's opening
+        // position: a fast node puts you inside already warm. This must be
+        // the LAST write to heat before the Shell mounts -- the per-run
+        // reset above deliberately runs first.
+        this.state.heat = result.startHeat
         this.session = new Shell(this.root, this.state, contract, (o) => this.endSession(o))
       },
     })
