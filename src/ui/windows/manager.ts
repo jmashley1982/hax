@@ -2,11 +2,12 @@ import { int, type Rng } from '@/core/rng'
 import { Win, type WindowOptions } from './window'
 
 /**
- * How many throwaway (unpinned, non-modal) windows may be alive at once --
- * background process windows and transient dialogs. Task panels are pinned
- * and never counted against this.
+ * Nominal window footprint used to lay out the occupancy grid. Real
+ * windows vary a little around this; the grid only has to be close enough
+ * that neighbouring slots do not visibly collide.
  */
-const MAX_TRANSIENT = 4
+const SLOT_W = 280
+const SLOT_H = 245
 
 export type Placement = 'cascade' | 'center' | 'random'
 
@@ -22,11 +23,24 @@ export class WindowManager {
   private modalStack: Win[] = []
   private zCounter = 10
   private cascadeIndex = 0
+  /** Notified whenever a budgeted (non-modal, non-pinned) window closes. */
+  private closeListeners: Array<() => void> = []
 
   constructor(mountPoint: HTMLElement, private rng: Rng) {
     this.layer = document.createElement('div')
     this.layer.className = 'win-layer'
     mountPoint.appendChild(this.layer)
+  }
+
+  /** Set by the Shell so priority spawns know when the board is genuinely full. */
+  private getCapacity: (() => number) | null = null
+
+  setCapacityProvider(fn: () => number): void {
+    this.getCapacity = fn
+  }
+
+  onWindowClosed(fn: () => void): void {
+    this.closeListeners.push(fn)
   }
 
   get hasModal(): boolean {
@@ -37,6 +51,15 @@ export class WindowManager {
     opts: Omit<WindowOptions, 'x' | 'y'>,
     placement: Placement = 'cascade',
   ): Win {
+    // A priority window never queues behind clutter. Only when the board
+    // is actually full does it take an ambient slot by force -- a warning
+    // you cannot see because six process windows got there first is worse
+    // than no warning at all. Evicting unconditionally would thin the
+    // board every time a message arrived, which is the opposite problem.
+    if (opts.priority) {
+      const cap = this.getCapacity?.() ?? Infinity
+      if (this.budgetedCount >= cap) this.evictOldestAmbient()
+    }
     const { x, y } = this.computePosition(placement)
     const win = new Win({ ...opts, x, y })
 
@@ -52,6 +75,9 @@ export class WindowManager {
 
     win.onClose(() => {
       this.windows = this.windows.filter((w) => w !== win)
+      if (!win.isModal && !win.isFixture) {
+        for (const fn of this.closeListeners) fn()
+      }
       if (win.isModal) {
         this.modalStack = this.modalStack.filter((w) => w !== win)
         if (this.modalStack.length === 0) this.removeBackdrop()
@@ -63,29 +89,52 @@ export class WindowManager {
       win.focus(this.zCounter)
     })
 
-    // Evict the oldest *unpinned* windows when the desk gets crowded.
-    // Pinned windows (task panels, the TARGET site) are exempt -- the
-    // Director owns their lifecycle and closing one mid-solve would destroy
-    // player work.
+    // No eviction pass here any more.
     //
-    // The budget counts ONLY evictable windows. It used to compare the
-    // total non-modal count against the cap, which meant the pinned task
-    // panels alone (5-7 of them at the deep layers) already exceeded it --
-    // so every background process window was culled the instant it opened,
-    // exactly where the churn is supposed to be heaviest.
-    // Never evict a window the player is currently holding. Eviction is a
-    // timer; a drag is a person. Closing a window mid-drag was one of the
-    // three ways the cursor ended up stuck to a dead element.
-    // `i <` not `i <=`: with 5 evictable windows and a cap of 4 the
-    // inclusive form closed TWO, over-evicting by one every single spawn.
-    // Short-lived windows (chat messages, camera feeds) were being culled
-    // almost as fast as they appeared.
-    const evictable = this.windows.filter((w) => !w.isModal && !w.isPinned && !w.isDragging)
-    for (let i = 0; i < evictable.length - MAX_TRANSIENT; i++) {
-      evictable[i]?.close()
-    }
-
+    // MAX_TRANSIENT was a second, independent cap that fought the board
+    // budget: it closed windows the budget still believed were alive, so
+    // the two disagreed about how full the board was. sim/boardBudget.ts
+    // is now the single authority on how many windows may exist, and it
+    // gates the SPAWN rather than cleaning up afterwards. A window that
+    // opened was allowed to open, and it stays until its own lifetime
+    // ends or the player closes it.
     return win
+  }
+
+  /**
+   * How many windows the board can hold without any of them overlapping.
+   *
+   * This is what makes the no-overlap guarantee structural rather than
+   * hopeful: the board budget clamps itself to this, so the placement
+   * search always has a free slot to find. Measured before the clamp
+   * existed, a 1440x900 board offered 9 slots while the budget allowed 15
+   * windows -- six of them had nowhere to go and piled up.
+   */
+  get gridSlots(): number {
+    const vw = Math.max(window.innerWidth, 480)
+    const vh = Math.max(window.innerHeight, 360)
+    const fieldLeft = Math.round(Math.min(vw * 0.22, 330))
+    const cols = Math.max(1, Math.floor((vw - fieldLeft - 24) / SLOT_W))
+    const rows = Math.max(1, Math.floor((vh - 90 - 90) / SLOT_H))
+    return cols * rows
+  }
+
+  /**
+   * Windows that count against the board budget: everything the spawner
+   * put there, minus the fixtures. The TARGET dossier, task panels the
+   * Director owns, hostiles, threats and modals are the game talking to
+   * you -- starving those would be worse than the pile.
+   */
+  get budgetedCount(): number {
+    return this.windows.filter((w) => !w.isModal && !w.isFixture && !w.isClosed).length
+  }
+
+  /** Make room for a priority window by dropping the oldest ambient one. */
+  evictOldestAmbient(): boolean {
+    const victim = this.windows.find((w) => !w.isModal && !w.isPinned && !w.isDragging)
+    if (!victim) return false
+    victim.close()
+    return true
   }
 
   closeAll(): void {
@@ -119,19 +168,56 @@ export class WindowManager {
     this.avoidRect = rect
   }
 
-  private overlapsAvoid(x: number, y: number, w = 300, h = 210): boolean {
+  private overlapsAvoid(x: number, y: number, w = SLOT_W, h = SLOT_H): boolean {
     const r = this.avoidRect
     if (!r) return false
     return x < r.right && x + w > r.left && y < r.bottom && y + h > r.top
   }
 
+  /**
+   * Is this slot already occupied by a live window?
+   *
+   * The old placement jittered a slot index and checked nothing, so two
+   * windows could -- and constantly did -- land on the same spot. Because
+   * the board budget now caps how many windows exist, and the cap is below
+   * the slot count, checking real occupancy actually SOLVES the layout
+   * rather than just reducing the odds.
+   */
+  private slotTaken(x: number, y: number): boolean {
+    for (const w of this.windows) {
+      if (w.isClosed) continue
+      const el = w.el
+      const wx = el.offsetLeft
+      const wy = el.offsetTop
+      const ww = el.offsetWidth || SLOT_W
+      const wh = el.offsetHeight || SLOT_H
+      // Deliberately generous: touching edges still counts as a collision,
+      // because two windows flush against each other read as a pile.
+      if (x < wx + ww && x + SLOT_W > wx && y < wy + wh && y + SLOT_H > wy) return true
+    }
+    return false
+  }
+
   private computePosition(placement: Placement): { x: number; y: number } {
     const vw = Math.max(window.innerWidth, 480)
     const vh = Math.max(window.innerHeight, 360)
+
+    // Preferred spots for the non-grid placements. If the preferred spot is
+    // free we take it; if not we fall through to the grid search rather
+    // than dropping a window on top of whatever is already there. Skipping
+    // this check is what left the TARGET dossier permanently overlapped by
+    // centre-placed threat windows.
     if (placement === 'center') {
-      return { x: vw / 2 - 190, y: vh / 2 - 110 }
+      const p = { x: vw / 2 - 190, y: vh / 2 - 110 }
+      if (!this.slotTaken(p.x, p.y)) return this.clampToBoard(p, vw, vh)
     }
-    if (placement === 'random') {
+    if (placement === 'cascade') {
+      this.cascadeIndex = (this.cascadeIndex + 1) % 8
+      const p = { x: 80 + this.cascadeIndex * 28, y: 100 + this.cascadeIndex * 24 }
+      if (!this.slotTaken(p.x, p.y)) return this.clampToBoard(p, vw, vh)
+    }
+
+    {
       // Task panels place into loose slots across the right ~72% of the
       // screen (the left strip belongs to the terminal), jittered so the
       // board looks scattered and busy rather than gridded. Slots account
@@ -140,30 +226,46 @@ export class WindowManager {
       // the spawner piling windows in one corner.
       const PANEL_W = 300
       const PANEL_H = 210
-      const fieldLeft = Math.round(vw * 0.26)
+      const fieldLeft = Math.round(Math.min(vw * 0.22, 330))
       const fieldTop = 90
       const cols = Math.max(1, Math.floor((vw - fieldLeft - 24) / PANEL_W))
       const rows = Math.max(1, Math.floor((vh - fieldTop - 90) / PANEL_H))
       const spreadW = (vw - fieldLeft - PANEL_W - 24) / Math.max(1, cols - 1)
       const spreadH = (vh - fieldTop - PANEL_H - 90) / Math.max(1, rows - 1)
-      // Try a few slots before settling, so an ambient window steps around
-      // the panel in use instead of landing on it.
-      let best = { x: 0, y: 0 }
-      for (let attempt = 0; attempt < 6; attempt++) {
-        const slot = this.cascadeIndex % (cols * rows)
-        this.cascadeIndex += 1
+      // Walk every slot looking for one that is genuinely free, starting
+      // from a rotating offset so the board does not always fill
+      // top-left-first. Only if the whole grid is occupied do we fall back
+      // to the least-bad option -- which the budget should make rare.
+      const slots = Math.max(1, cols * rows)
+      const start = this.cascadeIndex % slots
+      this.cascadeIndex += 1
+      let fallback: { x: number; y: number } | null = null
+
+      for (let i = 0; i < slots; i++) {
+        const slot = (start + i) % slots
         const col = slot % cols
         const row = Math.floor(slot / cols)
-        best = {
-          x: fieldLeft + col * (cols > 1 ? spreadW : 0) + int(this.rng, -14, 14),
-          y: fieldTop + row * (rows > 1 ? spreadH : 0) + int(this.rng, -14, 14),
+        // Jitter is small and applied AFTER the occupancy test would be
+        // meaningful, so it never pushes a window into its neighbour.
+        const candidate = {
+          x: Math.round(fieldLeft + col * (cols > 1 ? spreadW : 0) + int(this.rng, -6, 6)),
+          y: Math.round(fieldTop + row * (rows > 1 ? spreadH : 0) + int(this.rng, -6, 6)),
         }
-        if (!this.overlapsAvoid(best.x, best.y)) break
+        fallback ??= candidate
+        if (this.slotTaken(candidate.x, candidate.y)) continue
+        if (this.overlapsAvoid(candidate.x, candidate.y)) continue
+        return this.clampToBoard(candidate, vw, vh)
       }
-      return best
+      return this.clampToBoard(fallback ?? { x: fieldLeft, y: fieldTop }, vw, vh)
     }
-    this.cascadeIndex = (this.cascadeIndex + 1) % 8
-    return { x: 80 + this.cascadeIndex * 28, y: 100 + this.cascadeIndex * 24 }
+  }
+
+  /** Never place a window where part of it cannot be reached. */
+  private clampToBoard(p: { x: number; y: number }, vw: number, vh: number): { x: number; y: number } {
+    return {
+      x: Math.max(8, Math.min(p.x, vw - SLOT_W - 12)),
+      y: Math.max(52, Math.min(p.y, vh - 140)),
+    }
   }
 
   private ensureBackdrop(): void {

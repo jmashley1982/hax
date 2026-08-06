@@ -82,7 +82,7 @@ export class ReverseHack {
 
     const kind = pick(this.opts.rng, HOSTILE_KINDS)
     const win = this.opts.manager.spawn(
-      { title: `⚠ ${kind.title}`, modal: false, closable: false, decor: 'danger', pinned: true },
+      { title: `⚠ ${kind.title}`, modal: false, closable: false, decor: 'danger', pinned: true, fixture: true },
       'random',
     )
     win.el.classList.add('hostile')

@@ -108,7 +108,7 @@ export class Manhunt {
 
   private openDoxx(): void {
     const win = this.opts.manager.spawn(
-      { title: `⚠ ${this.opts.org.toUpperCase()} :: SUBJECT IDENTIFICATION`, modal: false, closable: false, decor: 'danger', pinned: true },
+      { title: `⚠ ${this.opts.org.toUpperCase()} :: SUBJECT IDENTIFICATION`, modal: false, closable: false, decor: 'danger', pinned: true, fixture: true },
       'random',
     )
     win.el.classList.add('hostile', 'manhunt-win')
@@ -163,7 +163,7 @@ export class Manhunt {
 
   private openMap(): void {
     const win = this.opts.manager.spawn(
-      { title: '⚠ TRACE :: SUBJECT LOCATION', modal: false, closable: false, decor: 'danger', pinned: true },
+      { title: '⚠ TRACE :: SUBJECT LOCATION', modal: false, closable: false, decor: 'danger', pinned: true, fixture: true },
       'random',
     )
     win.el.classList.add('hostile', 'manhunt-map')

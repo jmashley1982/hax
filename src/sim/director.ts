@@ -74,7 +74,20 @@ export class Director {
   private get desiredCount(): number {
     const floor = this.layers.current.panelFloor
     const byTension = Math.floor(this.layers.tension * 3)
-    return Math.min(7, floor + byTension)
+    const wanted = Math.min(7, floor + byTension)
+    // The board budget caps how many windows may exist in total, and task
+    // panels count. Without this the Director would happily hold seven
+    // panels while ambient popups fought for the remainder, and the board
+    // ran to 18 windows at depth -- measured, on IRL, in a 150s run.
+    const cap = this.getWindowBudget?.()
+    return cap === undefined ? wanted : Math.max(2, Math.min(wanted, cap))
+  }
+
+  /** Set by the Shell: how many budgeted windows may exist right now. */
+  private getWindowBudget: (() => number) | null = null
+
+  setBudgetProvider(fn: () => number): void {
+    this.getWindowBudget = fn
   }
 
   /**

@@ -1,3 +1,20 @@
+/*
+ * A bounded height, so the board can actually be laid out.
+ *
+ * Panels used to grow with their content -- a vault pull with eight file
+ * rows ran past 400px while the placement grid assumed ~215. The grid
+ * would then hand out a slot whose neighbour had already overflowed into
+ * it, and no amount of collision checking helps when the windows are
+ * simply bigger than the space. Capping the body (and scrolling the
+ * overflow) makes every window roughly one slot, which is what makes
+ * non-overlapping placement achievable at all.
+ */
+.panel .win__body {
+  max-height: 208px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 .panel {
   min-width: 260px;
   max-width: 292px;
@@ -23,14 +40,63 @@
   }
 }
 
-/* The panel the user should act on / that mashing currently drives. */
+/*
+ * The panel your keystrokes are going to.
+ *
+ * This used to be a border tint plus a soft glow hardcoded to green, so
+ * on any layer but SURFACE it did not even match the palette -- and on a
+ * busy board you could not tell which window you had selected. "Select a
+ * window and type to clear that one out" is not a feature you have if the
+ * selection is invisible, so this is now the loudest ordinary state on
+ * the board: a thick palette-coloured border, an inverted title bar, a
+ * literal TARGETED marker, and a lift above the other panels so the thing
+ * you are working on is never buried under one you are not.
+ */
 .panel.is-targeted {
-  border-color: var(--fg);
-  box-shadow: 0 0 18px rgba(57, 255, 106, 0.28), inset 0 0 40px rgba(0, 0, 0, 0.35);
+  border-color: var(--fg-bright);
+  border-width: 2px;
+  z-index: 860 !important;
+  box-shadow: 0 0 22px -2px var(--glow), inset 0 0 40px rgba(0, 0, 0, 0.35);
 }
 
 .panel.is-targeted .win__title {
-  background: rgba(57, 255, 106, 0.12);
+  background: var(--fg);
+}
+
+.panel.is-targeted .win__title-text {
+  color: var(--bg-deep);
+  text-shadow: none;
+  font-weight: bold;
+}
+
+.panel.is-targeted .win__title::after {
+  content: '\25B8 TARGETED';
+  margin-left: auto;
+  padding-left: 0.6rem;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--bg-deep);
+  opacity: 0.85;
+}
+
+/*
+ * A priority window (warning, auth prompt, ally code, threat) announces
+ * itself on arrival. It has already jumped the board budget to get here;
+ * this is so the player's eye follows.
+ */
+.win--priority {
+  border-color: var(--accent-2);
+  border-width: 2px;
+  animation: win-priority-arrive 0.5s ease-out 3;
+}
+
+@keyframes win-priority-arrive {
+  0%, 100% { box-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  50% { box-shadow: 0 0 26px -2px var(--accent-2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .win--priority { animation: none; }
 }
 
 .panel.is-cracked {

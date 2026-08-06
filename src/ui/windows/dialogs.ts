@@ -139,7 +139,10 @@ export interface WarningDialogOptions {
 
 /** A non-modal, self-dismissing alert -- an IDS trip, a system notice. Never blocks play. */
 export function spawnWarningDialog(manager: WindowManager, opts: WarningDialogOptions): Win {
-  const win = manager.spawn({ title: opts.title, modal: false, closable: true, decor: 'danger' }, 'random')
+  const win = manager.spawn(
+    { title: opts.title, modal: false, closable: true, decor: 'danger', priority: true },
+    'random',
+  )
   win.setBody(opts.message)
   if (opts.ttlMs) setTimeout(() => win.close(), opts.ttlMs)
   return win

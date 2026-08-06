@@ -48,6 +48,7 @@ import { Chain } from './chain/chain'
 import { Messenger, type Offer } from './messenger'
 import { Manhunt } from './manhunt'
 import { TokenPouch, type Token } from '@/sim/tokens'
+import { BoardBudget } from '@/sim/boardBudget'
 import type { TaskPanel } from './panels/panel'
 
 const BREAKTHROUGH_GRACE_MS = 2500
@@ -90,6 +91,8 @@ export class Shell {
   private idleWarned = false
   private breakthroughGraceUntil = 0
   private targetPanel: TaskPanel | null = null
+  /** The panel the player last clicked, as opposed to one focus rolled onto. */
+  private explicitTarget: TaskPanel | null = null
   private statusRight!: HTMLElement
   private statusLeft!: HTMLElement
 
@@ -150,6 +153,12 @@ export class Shell {
    */
   private nextReverseRollAt = 40_000
   /**
+   * How full the board is allowed to get. Replaces the old wall-clock
+   * spawner and WindowManager's MAX_TRANSIENT, which disagreed with each
+   * other about how many windows existed.
+   */
+  private budget: BoardBudget
+  /**
    * Child components are held so destroy() can unhook them. Each of these
    * subscribes to the store or to window events, and removing only their
    * DOM (which shellEl.remove() does) leaves those subscriptions live --
@@ -184,6 +193,13 @@ export class Shell {
     this.integrity = new IntegritySystem(state)
     this.layers = new LayerSystem(state)
     this.windows = new WindowManager(this.shellEl, mulberry32(state.seed + 2))
+    this.budget = new BoardBudget(
+      () => this.state.layer,
+      () => this.state.mode,
+      () => this.windows.gridSlots,
+    )
+    this.windows.onWindowClosed(() => this.budget.noteClosed())
+    this.windows.setCapacityProvider(() => this.budget.capacity)
 
     this.terminal = new Terminal(this.shellEl)
     this.crt = new CrtOverlay(this.shellEl, state.seed)
@@ -228,6 +244,10 @@ export class Shell {
         },
       },
     )
+    // Panels get the lion's share of the budget; the remainder is what
+    // ambient popups may use. Both are bounded by the same number, so the
+    // total on screen cannot run away.
+    this.director.setBudgetProvider(() => Math.max(3, this.budget.capacity - 1))
 
     this.mountStatusBar(this.shellEl)
     this.bindTargeting()
@@ -506,7 +526,7 @@ export class Shell {
       const id = winEl.dataset.panelId
       this.markInput()
       const panel = this.director.activePanels.find((p) => p.id === id)
-      if (panel) this.setTarget(panel)
+      if (panel) this.setTargetExplicit(panel)
     })
   }
 
@@ -533,6 +553,20 @@ export class Shell {
     store.emit('mode:change', { mode: next })
   }
 
+  /**
+   * Select a panel deliberately (a click, or a priority window arriving).
+   *
+   * A panel the player *chose* outranks the automatic roll-over: an
+   * unconsumed keystroke may still flow to another panel, but focus does
+   * not permanently move off a chosen panel while it still has work left.
+   * Without this, clicking a window and typing would silently drift to
+   * whichever panel happened to be able to take the next key.
+   */
+  private setTargetExplicit(panel: TaskPanel | null): void {
+    this.explicitTarget = panel
+    this.setTarget(panel)
+  }
+
   private setTarget(panel: TaskPanel | null): void {
     if (this.targetPanel === panel) return
     this.targetPanel?.setTargeted(false)
@@ -555,6 +589,14 @@ export class Shell {
    */
   private refreshTarget(): void {
     const workable = (p: TaskPanel): boolean => !p.isDone && !p.isSealed
+    // A panel the player explicitly clicked gets focus back as soon as it
+    // can take input again -- so a keystroke that rolled elsewhere mid-flip
+    // does not quietly steal the selection for the rest of the run.
+    if (this.explicitTarget && workable(this.explicitTarget)) {
+      if (this.targetPanel !== this.explicitTarget) this.setTarget(this.explicitTarget)
+      return
+    }
+    if (this.explicitTarget?.isDone) this.explicitTarget = null
     if (this.targetPanel && workable(this.targetPanel)) return
 
     const next =
@@ -803,6 +845,7 @@ export class Shell {
 
     this.tickIdlePressure(dt)
     this.tickOffers(dt)
+    this.tickAmbient()
     this.tickReverseRoll()
     this.manhunt?.tick(dt)
     this.tickChains(dt)
@@ -899,76 +942,78 @@ export class Shell {
         if (wave) this.spawnThreatWave(wave)
       }
 
-      // "Random windows that pop open, show some code running, then
-      // close -- like we're triggering events behind the scenes." Purely
-      // decorative -- never registered with the Director or added to any
-      // input-routing list, so it can never steal a keystroke from an
-      // actual task panel.
-      // Nothing ambient may open while the player is mid-drag, or while a
-      // reverse hack already has the screen full of hostiles. Both were
-      // producing the "windows pop up over it as you're using it" problem.
-      const boardBusy = isInteracting() || !!this.reverseHack?.active
-      if (!boardBusy && this.processSpawner.tick(this.elapsedMs, this.state.layer, this.layers.tension)) {
-        // Deep layers open two or three at once -- that burst is what makes
-        // the background read as constant churn rather than the occasional
-        // window.
-        const n = burstSize(this.state.layer, this.rng)
-        for (let i = 0; i < n; i++) {
-          spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
-        }
-        // Camera feeds ride the same cadence but land far less often, and
-        // get much more likely as you approach building control -- owning
-        // the cameras is the payoff of getting physical.
-        // Cameras are authored content and a payoff, not clutter -- the
-        // density cut targeted process windows, so cameras keep a healthy
-        // rate rather than becoming something you rarely see.
-        // The two human channels ride the same cadence. Operators escalate
-        // with depth and heat; allies show up to warn you.
-        const depthIdx = LAYER_ORDER.indexOf(this.state.layer)
-        if (this.rng() < 0.16 + depthIdx * 0.03) {
-          spawnOperatorMessage({
-            manager: this.windows,
-            rng: this.rng,
-            org: this.target.org,
-            handle: this.state.handle,
-            tier: Math.min(3, Math.floor(depthIdx / 2) + (this.state.heat > 60 ? 1 : 0)),
-          })
-        } else if (this.rng() < 0.3) {
-          spawnAllyMessage({
-            manager: this.windows,
-            rng: this.rng,
-            org: this.target.org,
-            kind: this.integrity.value < 55 ? 'incoming' : this.rng() < 0.5 ? 'badFiles' : 'route',
-          })
-        }
-
-        // Recovered documents: real files pulled off the target. Silently
-        // no-ops until images exist in public/images/.
-        // Authored content, like the camera clips -- these should actually
-        // be seen, so they get a healthy rate rather than the process
-        // windows' deliberately-thinned one.
-        // There are roughly twice as many clips as documents, so the feeds
-        // get roughly twice the airtime -- otherwise the smaller pool is the
-        // one that visibly repeats.
-        if (this.rng() < 0.17 + depthIdx * 0.03) {
-          spawnDocWindow(this.windows, this.rng, this.target.org)
-        }
-
-        const camChance = 0.34 + LAYER_ORDER.indexOf(this.state.layer) * 0.06
-        if (this.rng() < camChance) {
-          spawnCamWindow({
-            manager: this.windows,
-            rng: this.rng,
-            labelPrefix: this.target.org.toUpperCase(),
-            // Everything except 'webcam', which is reserved for the reverse
-            // hack ("they're watching YOU"). Naming one narrow kind here --
-            // doorcam has exactly two clips -- handed a quarter of all
-            // camera popups to the same two files.
-            kind: ['cctv', 'thermal', 'doorcam'],
-          })
-        }
-      }
     }
+  }
+
+  /**
+   * Ambient popups -- now gated by the board budget rather than a clock.
+   *
+   * Every kind here is optional texture. The budget decides whether the
+   * board has room at all; only then does the mix decide what arrives.
+   * That inversion is the fix for "everything is just on top of everything
+   * else": previously each kind rolled its own independent chance on a
+   * wall-clock tick and none of them knew how full the screen was.
+   */
+  private tickAmbient(): void {
+    if (this.inFinale || this.ejecting) return
+    // Nothing ambient opens while the player is mid-drag, during a reverse
+    // hack (the screen is already full of hostiles) or during a manhunt.
+    if (isInteracting() || this.reverseHack?.active || this.manhunt?.active) return
+    if (!this.processSpawner.tick(this.elapsedMs, this.state.layer, this.layers.tension)) return
+
+    const draws = burstSize(this.state.layer, this.rng)
+    for (let i = 0; i < draws; i++) {
+      if (!this.budget.canSpawn(this.windows.budgetedCount)) return
+      this.spawnAmbient()
+    }
+  }
+
+  /** One ambient window, kind chosen by depth. */
+  private spawnAmbient(): void {
+    const depthIdx = LAYER_ORDER.indexOf(this.state.layer)
+    const roll = this.rng()
+
+    if (roll < 0.34) {
+      spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
+      return
+    }
+    if (roll < 0.62) {
+      spawnCamWindow({
+        manager: this.windows,
+        rng: this.rng,
+        labelPrefix: this.target.org.toUpperCase(),
+        // Everything except 'webcam', which is reserved for the reverse
+        // hack ("they're watching YOU"). Naming one narrow kind here --
+        // doorcam has exactly two clips -- handed a quarter of all camera
+        // popups to the same two files.
+        kind: ['cctv', 'thermal', 'doorcam'],
+      })
+      return
+    }
+    if (roll < 0.78) {
+      // Returns false when no image has landed yet; fall back rather than
+      // silently wasting the draw.
+      if (!spawnDocWindow(this.windows, this.rng, this.target.org)) {
+        spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
+      }
+      return
+    }
+    if (roll < 0.9) {
+      spawnOperatorMessage({
+        manager: this.windows,
+        rng: this.rng,
+        org: this.target.org,
+        handle: this.state.handle,
+        tier: Math.min(3, Math.floor(depthIdx / 2) + (this.state.heat > 60 ? 1 : 0)),
+      })
+      return
+    }
+    spawnAllyMessage({
+      manager: this.windows,
+      rng: this.rng,
+      org: this.target.org,
+      kind: this.integrity.value < 55 ? 'incoming' : this.rng() < 0.5 ? 'badFiles' : 'route',
+    })
   }
 
   // -- Jobs: the contract's actual win condition -------------------------
@@ -1117,7 +1162,9 @@ export class Shell {
     this.reverseHack?.destroy()
     this.reverseHack = null
     this.director.clearAll()
+    this.explicitTarget = null
     this.setTarget(null)
+    this.budget.reset()
     for (const t of this.activeThreats) t.win.close()
     this.activeThreats = []
 
@@ -1158,7 +1205,9 @@ export class Shell {
 
     // Sweep everything: the machine is off, nothing survives the reboot.
     this.director.clearAll()
+    this.explicitTarget = null
     this.setTarget(null)
+    this.budget.reset()
     for (const t of this.activeThreats) t.win.close()
     this.activeThreats = []
     this.waveActive = false
@@ -1283,7 +1332,9 @@ export class Shell {
     this.ejecting = true
 
     this.director.clearAll()
+    this.explicitTarget = null
     this.setTarget(null)
+    this.budget.reset()
     for (const t of this.activeThreats) t.win.close()
     this.activeThreats = []
 
@@ -1359,7 +1410,9 @@ export class Shell {
   private beginManhunt(): void {
     if (this.manhunt?.active || this.destroyed) return
     this.director.clearAll()
+    this.explicitTarget = null
     this.setTarget(null)
+    this.budget.reset()
     this.objective.set(`STAY ANONYMOUS -- ${this.target.org} IS HUNTING YOU`)
 
     // Their ETA is the difficulty knob: CASUAL gives you room to work it
@@ -1645,7 +1698,9 @@ export class Shell {
     // Sweep the board, then reopen at the new depth -- the visible
     // "simplify, then get busy again" beat.
     this.director.clearAll()
+    this.explicitTarget = null
     this.setTarget(null)
+    this.budget.reset()
 
     const next = this.layers.breakthrough()
     this.deepestThisRun = next.id
@@ -1745,7 +1800,9 @@ export class Shell {
     this.inFinale = true
 
     this.director.clearAll()
+    this.explicitTarget = null
     this.setTarget(null)
+    this.budget.reset()
     for (const t of this.activeThreats) t.win.close()
     this.activeThreats = []
 

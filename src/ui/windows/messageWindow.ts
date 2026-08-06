@@ -31,9 +31,17 @@ function spawnChat(
   channel: string,
   line: MessageLine,
   ttl: number,
+  /** An ally handing over a code is actionable and must not be buried. */
+  priority = false,
 ): void {
   const win = manager.spawn(
-    { title: channel, modal: false, closable: true, decor: cls === 'msg--op' ? 'danger' : 'normal' },
+    {
+      title: channel,
+      modal: false,
+      closable: true,
+      decor: cls === 'msg--op' ? 'danger' : 'normal',
+      priority,
+    },
     'random',
   )
   win.el.classList.add('msgwin', cls)
@@ -94,6 +102,9 @@ export function spawnAllyMessage(opts: AllyMsgOptions): string {
     `MSG :: ${handle}`,
     { from: `${handle}@relay`, text: fill(raw, opts.org, '', opts.code ?? '') },
     int(opts.rng, 9000, 13000),
+    // A tip carrying a real code is the one message that changes what the
+    // player should do next.
+    Boolean(opts.code),
   )
   return handle
 }

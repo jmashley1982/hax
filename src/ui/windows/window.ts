@@ -18,6 +18,24 @@ export interface WindowOptions {
    * halfway through solving.
    */
   pinned?: boolean
+  /**
+   * Warnings, auth prompts, ally codes and threats.
+   *
+   * A priority window bypasses the board budget (it is never dropped for
+   * being over capacity), announces itself, and is auto-targeted so it is
+   * actionable the instant it lands -- "i want important windows like
+   * warnings or passwords to become prioritized and actionable
+   * immediately."
+   */
+  priority?: boolean
+  /**
+   * Fixtures are exempt from the board budget: the TARGET dossier, threat
+   * panels, hostile windows and the manhunt. Those are the game talking to
+   * you, and starving them would be worse than the pile. Everything else
+   * -- task panels included -- counts, because the complaint was about how
+   * much is on screen in total, not about one category of it.
+   */
+  fixture?: boolean
   x: number
   y: number
 }
@@ -39,7 +57,8 @@ export class Win {
 
   constructor(private opts: WindowOptions) {
     this.el = document.createElement('div')
-    this.el.className = `win${opts.decor === 'danger' ? ' win--danger' : ''}`
+    this.el.className =
+      `win${opts.decor === 'danger' ? ' win--danger' : ''}${opts.priority ? ' win--priority' : ''}`
     this.el.style.left = `${opts.x}px`
     this.el.style.top = `${opts.y}px`
 
@@ -102,6 +121,14 @@ export class Win {
 
   get isPinned(): boolean {
     return this.opts.pinned ?? false
+  }
+
+  get isPriority(): boolean {
+    return this.opts.priority ?? false
+  }
+
+  get isFixture(): boolean {
+    return this.opts.fixture ?? false
   }
 
   setTitle(text: string): void {

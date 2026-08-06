@@ -49,7 +49,7 @@ export class ThreatPanel {
     private onResolve: (success: boolean) => void,
   ) {
     this.win = manager.spawn(
-      { title: TITLES[event.kind], modal: false, closable: false, decor: 'danger', pinned: true },
+      { title: TITLES[event.kind], modal: false, closable: false, decor: 'danger', pinned: true, priority: true, fixture: true },
       'center',
     )
     this.win.el.classList.add('threat')
