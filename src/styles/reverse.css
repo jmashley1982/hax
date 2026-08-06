@@ -484,3 +484,29 @@
   color: var(--warn);
   margin-right: 2px;
 }
+
+/* ---- IRL HACKER: standing still bleeds you ---- */
+
+/*
+ * A creeping red edge that only appears once the idle grace has elapsed.
+ * Deliberately loud: the penalty is invisible otherwise, and a run ending
+ * because you stopped typing needs to have been visibly your own doing.
+ */
+.shell.is-idle-bleed::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 620;
+  box-shadow: inset 0 0 100px 20px rgba(255, 40, 40, 0.42);
+  animation: idle-bleed 1.1s ease-in-out infinite;
+}
+
+@keyframes idle-bleed {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-idle-bleed::after { animation: none; }
+}

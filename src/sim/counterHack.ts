@@ -78,7 +78,16 @@ export class CounterHackDirector {
     this.nextCheckAt = Math.max(this.nextCheckAt, elapsedMs + ms)
   }
 
+  /** Play-mode scalars: how often waves come, and how big they are. */
+  private rateMul = 1
+  private sizeMul = 1
+
   constructor(private rng: Rng) {}
+
+  setDifficulty(rateMul: number, sizeMul: number): void {
+    this.rateMul = rateMul
+    this.sizeMul = sizeMul
+  }
 
   /**
    * Call every tick with current heat (0-100) and layer. Returns a new
@@ -103,11 +112,11 @@ export class CounterHackDirector {
     // the brief this system exists to satisfy ("periodically... should
     // attempt to hack us back") -- this needs to be a mechanic a player
     // reliably experiences within one run, not a rare fluke.
-    const chance = Math.min(0.9, 0.25 + danger * 0.35 + heatFactor * 0.4)
+    const chance = Math.min(0.95, (0.25 + danger * 0.35 + heatFactor * 0.4) * this.rateMul)
 
     // Interval shrinks with danger: frequent close calls deep in a hunted
     // layer, still a real recurring threat (not rare) even on the surface.
-    const [lo, hi] = [6000 - danger * 3000, 12000 - danger * 5000]
+    const [lo, hi] = [(6000 - danger * 3000) / this.rateMul, (12000 - danger * 5000) / this.rateMul]
     this.nextCheckAt = elapsedMs + int(this.rng, lo, hi)
 
     if (this.rng() > chance) return null
@@ -115,7 +124,7 @@ export class CounterHackDirector {
   }
 
   private rollWave(danger: number, layer: LayerId): ThreatWaveSpec {
-    const size = WAVE_SIZE[layer]
+    const size = Math.max(1, Math.round(WAVE_SIZE[layer] * this.sizeMul))
     const kinds: ThreatKind[] = []
     for (let i = 0; i < size; i++) kinds.push(KINDS[int(this.rng, 0, KINDS.length - 1)]!)
     const hitsNeeded = 4 + Math.round(danger * 5)

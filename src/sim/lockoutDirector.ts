@@ -44,7 +44,14 @@ export class LockoutDirector {
   private nextCheckAt = GRACE_MS
   private lastFiredAt = 0
 
+  /** Play-mode scalar: how readily the target pulls the plug on you. */
+  private rateMul = 1
+
   constructor(private rng: Rng) {}
+
+  setDifficulty(rateMul: number): void {
+    this.rateMul = rateMul
+  }
 
   /** Returns true exactly when a lockout should seize the screen. */
   tick(elapsedMs: number, heat: number, layer: LayerId, busy: boolean): boolean {
@@ -57,7 +64,7 @@ export class LockoutDirector {
       this.nextCheckAt = elapsedMs + 4000
       return false
     }
-    if (elapsedMs - this.lastFiredAt < MIN_GAP_MS) {
+    if (elapsedMs - this.lastFiredAt < MIN_GAP_MS / this.rateMul) {
       this.nextCheckAt = elapsedMs + 8000
       return false
     }
@@ -66,7 +73,7 @@ export class LockoutDirector {
 
     const risk = LAYER_RISK[layer]
     if (risk <= 0) return false
-    const chance = Math.min(0.6, risk * 0.5 + (heat / 100) * 0.35)
+    const chance = Math.min(0.75, (risk * 0.5 + (heat / 100) * 0.35) * this.rateMul)
     if (this.rng() > chance) return false
 
     this.lastFiredAt = elapsedMs

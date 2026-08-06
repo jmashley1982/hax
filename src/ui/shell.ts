@@ -2,9 +2,8 @@ import { store } from '@/core/store'
 import { clock } from '@/core/clock'
 import { mulberry32, hashSeed, type Rng } from '@/core/rng'
 import { saveState, LAYER_ORDER, type GameState } from '@/core/state'
-import type { InteractionMode } from '@/core/events'
 import { InputPipeline } from '@/core/input'
-import { MODE_PROFILES, computeProgress } from '@/core/progress'
+import { PLAY_MODES, PLAY_MODE_ORDER, computeProgress, type PlayModeProfile } from '@/core/progress'
 import { matchCommand } from '@/sim/commands/registry'
 import { buildCommandResponse } from '@/sim/commands/responses'
 import { HeatSystem } from '@/sim/heat'
@@ -46,9 +45,10 @@ import { PANEL_LABELS } from './panels/registry'
 import { ThreatPanel } from './panels/threatPanel'
 import { TargetSitePanel } from './panels/targetSite'
 import { applyLayerPalette, applyLayerSkin, brandLayerPalettes } from '@/themes/themes'
+import { Chain } from './chain/chain'
+import { TokenPouch, type Token } from '@/sim/tokens'
 import type { TaskPanel } from './panels/panel'
 
-const MODE_CYCLE: readonly InteractionMode[] = ['hybrid', 'chaos', 'intent']
 const BREAKTHROUGH_GRACE_MS = 2500
 
 /** How a contract ended, handed back to the App for career bookkeeping. */
@@ -84,8 +84,9 @@ export class Shell {
   private rng: Rng
   private shellEl: HTMLElement
   private elapsedMs = 0
-  /** Negative so the very first inert keystroke in INTENT explains itself immediately. */
-  private lastIntentHintMs = -1e9
+  /** When the player last did anything. IRL HACKER bleeds integrity off this. */
+  private lastInputMs = 0
+  private idleWarned = false
   private breakthroughGraceUntil = 0
   private targetPanel: TaskPanel | null = null
   private statusRight!: HTMLElement
@@ -124,6 +125,13 @@ export class Shell {
   private artifactSeeded = false
   /** True once the job's win condition is met and the escape is running. */
   private extracting = false
+  /** Earned skeleton keys / trojan bypasses. Cleared with the session. */
+  private pouch = new TokenPouch()
+  /** At most one interactive chain at a time -- two would just be noise. */
+  private chain: Chain | null = null
+  private nextChainAt = 25_000
+  /** Set while a trojan bypass is burning, which suppresses their controls. */
+  private bypassUntilMs = 0
   /**
    * Child components are held so destroy() can unhook them. Each of these
    * subscribes to the store or to window events, and removing only their
@@ -177,7 +185,13 @@ export class Shell {
       },
       nextCommand: () => this.content.line('shell', 'cmd'),
     })
-    this.hud = new Hud(this.shellEl, state, () => this.layers.tension)
+    this.hud = new Hud(
+      this.shellEl,
+      state,
+      () => this.layers.tension,
+      this.pouch,
+      (token) => this.spendToken(token),
+    )
     this.objective = new ObjectiveBar(this.shellEl)
 
     this.director = new Director(
@@ -211,6 +225,7 @@ export class Shell {
     // A pointer lost during the previous session must not leave ambient
     // spawning wedged off for the next one.
     resetInteraction()
+    this.applyDifficulty()
     this.offTick = store.on('tick', ({ dt }) => this.onTick(dt))
 
     clock.start()
@@ -314,6 +329,9 @@ export class Shell {
     this.offTick = null
     for (const t of this.pending) clearTimeout(t)
     this.pending = []
+    this.chain?.destroy()
+    this.chain = null
+    this.pouch.clear()
     this.lockout?.destroy()
     this.lockout = null
     this.reverseHack?.destroy()
@@ -407,9 +425,27 @@ export class Shell {
     this.renderStatusLeft()
   }
 
+  /** The chosen play mode's coefficients. Read fresh so TAB takes effect instantly. */
+  private get mode(): PlayModeProfile {
+    return PLAY_MODES[this.state.mode]
+  }
+
+  /**
+   * Push the play mode's pressure scalars into every system that owns a
+   * difficulty knob. Called at construction and again on every TAB cycle,
+   * so switching mid-run actually changes the run.
+   */
+  private applyDifficulty(): void {
+    const m = this.mode
+    this.counterHack.setDifficulty(m.threatRate, m.threatSize)
+    this.lockoutDirector.setDifficulty(m.lockoutRate)
+    this.integrity.setDifficulty(m.damageMul, m.regenMul)
+    this.shellEl.dataset.playmode = m.id
+  }
+
   private renderStatusRight(): void {
     this.statusRight.textContent =
-      `MODE:${this.state.mode.toUpperCase()} [TAB]  THEME:${this.state.theme.toUpperCase()}  SEED:${this.state.seedLabel}`
+      `MODE:${PLAY_MODES[this.state.mode].label} [TAB]  THEME:${this.state.theme.toUpperCase()}  SEED:${this.state.seedLabel}`
   }
 
   /** Keeps the target org visible at all times -- the point of reference for every threat/breach line. */
@@ -442,6 +478,7 @@ export class Shell {
       const winEl = (e.target as HTMLElement)?.closest('.panel') as HTMLElement | null
       if (!winEl) return
       const id = winEl.dataset.panelId
+      this.markInput()
       const panel = this.director.activePanels.find((p) => p.id === id)
       if (panel) this.setTarget(panel)
     })
@@ -461,9 +498,10 @@ export class Shell {
   }
 
   private cycleMode(): void {
-    const idx = MODE_CYCLE.indexOf(this.state.mode)
-    const next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length] ?? 'hybrid'
+    const idx = PLAY_MODE_ORDER.indexOf(this.state.mode)
+    const next = PLAY_MODE_ORDER[(idx + 1) % PLAY_MODE_ORDER.length] ?? 'leet'
     this.state.mode = next
+    this.applyDifficulty()
     this.renderStatusRight()
     saveState(this.state)
     store.emit('mode:change', { mode: next })
@@ -531,16 +569,9 @@ export class Shell {
     if (this.lockout) return
     this.inputPipeline.push({ kind: 'key', token: char })
 
-    const profile = MODE_PROFILES[this.state.mode]
-    // INTENT mode keeps raw keystrokes inert -- only submitted commands move
-    // the board. That is the mode's whole identity, but it used to happen in
-    // total silence: you typed, the prompt filled, and nothing anywhere said
-    // why the windows weren't reacting. Indistinguishable from broken. So the
-    // rule now announces itself instead of just being obeyed.
-    if (profile.keyGain <= 0) {
-      this.nudgeIntentHint()
-      return
-    }
+    // Every mode now accepts mashing -- the old INTENT mode made raw
+    // keystrokes inert, which is indistinguishable from a broken game.
+    this.markInput()
 
     // Active threats claim the keystroke first -- "you have to break their
     // attempt" needs to be the most urgent thing on screen, not something
@@ -586,25 +617,39 @@ export class Shell {
   }
 
   /**
-   * Teach INTENT's rule at the moment it bites, without nagging.
-   *
-   * Fires on the first inert keystroke of a run and then at most every 12
-   * seconds, and points at the panel that *would* have taken the input, so
-   * the answer ("press ENTER") arrives attached to the thing that isn't
-   * moving.
+   * Any deliberate input at all. IRL HACKER measures inactivity from here,
+   * so thinking between actions is free but walking away is not.
    */
-  private nudgeIntentHint(): void {
-    if (this.elapsedMs - this.lastIntentHintMs < 12_000) return
-    this.lastIntentHintMs = this.elapsedMs
-    this.refreshTarget()
-    store.emit('terminal:line', {
-      text: this.targetPanel
-        ? `-- INTENT MODE :: keystrokes alone are inert. type a command (scan / exploit / decrypt / pivot) then ENTER -- it hits ${this.targetPanel.objectiveText}`
-        : '-- INTENT MODE :: keystrokes alone are inert. type a command then ENTER. clicking panels still works.',
-      tone: 'warning',
-      speed: 0,
-    })
-    this.prompt.flagAttention()
+  private markInput(): void {
+    this.lastInputMs = this.elapsedMs
+    this.idleWarned = false
+    this.shellEl.classList.remove('is-idle-bleed')
+  }
+
+  /**
+   * IRL HACKER's standing-still penalty (`idleDrainPerSec`).
+   *
+   * Deliberately silent in the other two modes -- this is the one rule that
+   * makes the top difficulty a different game rather than the same game with
+   * bigger numbers, so it must not leak into CASUAL at any strength.
+   */
+  private tickIdlePressure(dt: number): void {
+    const { idleDrainPerSec, idleGraceMs } = this.mode
+    if (idleDrainPerSec <= 0) return
+    if (this.lockout || this.inFinale || this.ejecting) return
+    const idleFor = this.elapsedMs - this.lastInputMs
+    if (idleFor < idleGraceMs) return
+
+    if (!this.idleWarned) {
+      this.idleWarned = true
+      store.emit('terminal:line', {
+        text: '!! YOU HAVE STOPPED MOVING -- their trace is closing. KEEP WORKING.',
+        tone: 'danger',
+        speed: 0,
+      })
+      this.shellEl.classList.add('is-idle-bleed')
+    }
+    this.integrity.damage((idleDrainPerSec * dt) / 1000)
   }
 
   private applyResidualProgress(): void {
@@ -619,9 +664,21 @@ export class Shell {
   }
 
   private handleSubmit(line: string): void {
+    this.markInput()
+    // A typed line reaches, in order: a live chain's pending code, then a
+    // held token's invoke code, then the normal command router. Both of the
+    // first two are things the player *earned* the right to type, so they
+    // outrank a generic keyword match.
+    if (this.chain?.trySubmit(line)) return
+    const invoked = this.pouch.takeByCode(line)
+    if (invoked) {
+      this.spendToken(invoked)
+      return
+    }
+
     const evaluated = this.inputPipeline.push({ kind: 'submit', token: line })
     const match = matchCommand(line)
-    const profile = MODE_PROFILES[this.state.mode]
+    const profile = this.mode
 
     const scoreByTier: Record<string, number> = { exact: 40, fuzzy: 20, thematic: 8, nonsense: 0 }
     awardScore(this.state, scoreByTier[match.tier] ?? 0)
@@ -713,6 +770,8 @@ export class Shell {
     // timer that could eject them for a wave they physically cannot see.
     if (this.lockout) return
 
+    this.tickIdlePressure(dt)
+    this.tickChains(dt)
     this.director.tick(dt, !isInteracting())
     for (const panel of this.director.activePanels) {
       if (panel instanceof BruteForcePanel) panel.tickDecay(dt)
@@ -779,17 +838,28 @@ export class Shell {
       return
     }
 
+    // While a trojan bypass is burning, their controls are literally down:
+    // no new waves at all. This is what "slip in faster or deeper" buys --
+    // a real window of quiet, not just a number nudged.
+    // While a trojan bypass is burning, their controls are literally down:
+    // no new waves. Scoped to the wave only -- the ambient popups below are
+    // texture, and suppressing those too would just make the screen go dead
+    // for half a minute at the exact moment the player is meant to be
+    // moving fastest.
+    const bypassing = this.elapsedMs < this.bypassUntilMs
     if (!this.inFinale && !this.ejecting) {
-      const wave = this.counterHack.tick(
-        this.elapsedMs,
-        // Low integrity reads as extra heat to the counter-hack director --
-        // a wounded machine draws more attention. This is the compounding
-        // half of the tug of war.
-        Math.min(100, this.state.heat + this.integrity.exposure * 35),
-        this.state.layer,
-        this.activeThreats.length,
-      )
-      if (wave) this.spawnThreatWave(wave)
+      if (!bypassing) {
+        const wave = this.counterHack.tick(
+          this.elapsedMs,
+          // Low integrity reads as extra heat to the counter-hack director
+          // -- a wounded machine draws more attention. This is the
+          // compounding half of the tug of war.
+          Math.min(100, this.state.heat + this.integrity.exposure * 35),
+          this.state.layer,
+          this.activeThreats.length,
+        )
+        if (wave) this.spawnThreatWave(wave)
+      }
 
       // "Random windows that pop open, show some code running, then
       // close -- like we're triggering events behind the scenes." Purely
@@ -1221,6 +1291,114 @@ export class Shell {
     el.append(title, sub, score)
     this.shellEl.appendChild(el)
     setTimeout(() => el.remove(), 2000)
+  }
+
+  // -- interactive chains + earned tokens --------------------------------
+
+  /**
+   * Keep at most one chain running, spaced out.
+   *
+   * Chains are long -- a scan alone is ~15 seconds plus however long its
+   * jams sit -- so they are a periodic beat, not ambient texture. The gap
+   * shortens with depth because the deeper layers are where the player most
+   * needs something to spend.
+   */
+  private tickChains(dt: number): void {
+    if (this.chain && !this.chain.active) this.chain = null
+    this.chain?.tick(dt)
+    if (this.chain) return
+    if (this.elapsedMs < this.nextChainAt) return
+    // Never open one on top of an emergency: the whole appeal is running it
+    // alongside normal play, and during a wave there is no normal play.
+    if (this.lockout || this.waveActive || this.inFinale || this.ejecting || this.reverseHack?.active) {
+      this.nextChainAt = this.elapsedMs + 6000
+      return
+    }
+
+    const depthIdx = LAYER_ORDER.indexOf(this.state.layer)
+    this.nextChainAt = this.elapsedMs + Math.max(22_000, 52_000 - depthIdx * 5000)
+    this.chain = new Chain({
+      manager: this.windows,
+      rng: this.rng,
+      org: this.target.org,
+      mode: this.mode,
+      cb: {
+        line: (text, tone) => store.emit('terminal:line', { text, tone, speed: 0 }),
+        damage: (n) => this.integrity.damage(n),
+        repair: (n) => this.integrity.repair(n),
+        coolHeat: (n) => this.heat.add(-n),
+        grantToken: (t) => this.grantToken(t),
+      },
+    })
+  }
+
+  private grantToken(token: Token): void {
+    if (this.pouch.add(token)) return
+    // Pouch full. Paying out nothing after a whole chain would be a swindle,
+    // so it converts to an immediate effect instead of evaporating.
+    store.emit('terminal:line', {
+      text: `-- no room for another ${token.label}; burned it on the spot`,
+      tone: 'warning',
+      speed: 0,
+    })
+    this.spendToken(token)
+  }
+
+  /**
+   * Spend a token -- clicked in the HUD or typed at the prompt.
+   *
+   * SKELETON KEY is deliberately enormous: it wipes the board and drops a
+   * whole layer. It has to be, or a chain that took several minutes of
+   * divided attention would not have been worth running.
+   */
+  private spendToken(token: Token): void {
+    if (this.destroyed) return
+    if (token.kind === 'skeleton') {
+      store.emit('terminal:line', {
+        text: `>>>> SKELETON KEY ${token.code} -- every lock on this layer just opened`,
+        tone: 'success',
+        speed: 0,
+      })
+      this.flashToken('SKELETON KEY', token.code)
+      if (this.layers.isFinalLayer) {
+        // At the bottom there is no next layer to drop into, so it pays out
+        // as the finale instead of silently doing nothing.
+        this.handleThresholdCrossed()
+      } else {
+        this.handleBreakthrough()
+      }
+      return
+    }
+
+    // TROJAN BYPASS: their controls go down for a while.
+    this.bypassUntilMs = this.elapsedMs + 30_000
+    this.heat.add(-45)
+    this.integrity.repair(12)
+    this.counterHack.defer(this.elapsedMs, 30_000)
+    this.lockoutDirector.rearm(this.elapsedMs, 30_000)
+    this.shellEl.classList.add('is-bypassing')
+    this.later(() => this.shellEl.classList.remove('is-bypassing'), 30_000)
+    store.emit('terminal:line', {
+      text: `>>>> TROJAN ${token.code} PUSHED -- their controls are down for 30s. MOVE.`,
+      tone: 'success',
+      speed: 0,
+    })
+    this.flashToken('TROJAN BYPASS', token.code)
+  }
+
+  /** A full-width banner, because spending a token should feel like an event. */
+  private flashToken(label: string, code: string): void {
+    const el = document.createElement('div')
+    el.className = 'token-flash'
+    const t = document.createElement('div')
+    t.className = 'token-flash__title'
+    t.textContent = label
+    const c = document.createElement('div')
+    c.className = 'token-flash__code'
+    c.textContent = code
+    el.append(t, c)
+    this.shellEl.appendChild(el)
+    this.later(() => el.remove(), 1800)
   }
 
   private onHeatCritical(): void {

@@ -20,7 +20,12 @@ export interface TerminalLine {
   speed?: number
 }
 
-export type InteractionMode = 'chaos' | 'intent' | 'hybrid'
+/**
+ * How the game plays, chosen on the dashboard. These replaced the old
+ * CHAOS / INTENT / HYBRID *input* modes: those described the keyboard,
+ * these describe the pressure. See core/progress.ts for the coefficients.
+ */
+export type PlayMode = 'casual' | 'leet' | 'irl'
 
 export type ThemeId = 'phosphor' | 'amber' | 'neon' | 'agency'
 
@@ -40,7 +45,7 @@ export interface EventMap {
   /** User submitted a parsed terminal command line. */
   'input:command': { raw: string }
 
-  'mode:change': { mode: InteractionMode }
+  'mode:change': { mode: PlayMode }
   'theme:change': { theme: ThemeId }
 
   /** Generic progress advancement, consumed by the scheduler in Phase 3. */

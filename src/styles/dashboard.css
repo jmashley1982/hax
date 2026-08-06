@@ -143,6 +143,32 @@
   color: var(--fg-bright);
 }
 
+/*
+ * The play-mode toggle is a difficulty choice, so it is colour-coded --
+ * you should be able to tell at a glance that you left it on IRL HACKER.
+ */
+.dash__toggle--mode {
+  font-weight: bold;
+  min-width: 11ch;
+}
+
+.dash__toggle--mode[data-mode='casual'] { color: var(--ok); border-color: var(--ok); }
+.dash__toggle--mode[data-mode='leet'] { color: var(--accent-2); border-color: var(--accent-2); }
+.dash__toggle--mode[data-mode='irl'] {
+  color: var(--danger, #ff4a4a);
+  border-color: var(--danger, #ff4a4a);
+  animation: mode-irl-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes mode-irl-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 74, 74, 0); }
+  50% { box-shadow: 0 0 10px rgba(255, 74, 74, 0.45); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash__toggle--mode[data-mode='irl'] { animation: none; }
+}
+
 .dash__stats {
   display: flex;
   flex-direction: column;

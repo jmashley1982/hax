@@ -1,0 +1,280 @@
+/* ============================================================
+   INTERACTIVE CHAINS (ui/chain/chain.ts) + EARNED TOKENS
+   A side-thread of linked windows that runs alongside the board:
+   lead -> scanner (which jams) -> decision -> a token you keep.
+   ============================================================ */
+
+.chainwin {
+  min-width: 250px;
+  max-width: 320px;
+}
+
+.chain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.chain__from {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--accent-2);
+}
+
+.chain__text {
+  color: var(--fg);
+}
+
+.chain__hint {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  opacity: 0.8;
+}
+
+/* The handed-over command. Reads like machine output but is a real button. */
+.chain__cmd {
+  display: block;
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px dashed var(--accent-2);
+  color: var(--fg-bright);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 8px 10px;
+  min-height: 38px;
+  cursor: pointer;
+  text-align: left;
+  word-break: break-all;
+}
+
+.chain__cmd:hover {
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent-2) 14%, transparent);
+}
+
+/* -- scanner -- */
+
+.chain__readout {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+.chain__track {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--panel-edge);
+  overflow: hidden;
+}
+
+.chain__bar {
+  height: 100%;
+  width: 0;
+  background: var(--ok);
+  transition: width 140ms linear;
+}
+
+/*
+ * A jammed scan has to be visibly stuck, not just slow -- the whole beat
+ * is "it stops and you go free it", and a bar that merely paused looks
+ * identical to one that is still crawling.
+ */
+.chainwin.is-snagged {
+  border-color: var(--accent-2);
+}
+
+.chainwin.is-snagged .chain__bar {
+  background: var(--accent-2);
+  animation: chain-jam 0.7s steps(2) infinite;
+}
+
+@keyframes chain-jam {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.chain__unstick {
+  width: 100%;
+  min-height: 40px;
+  background: transparent;
+  border: 1px solid var(--accent-2);
+  color: var(--accent-2);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+
+.chain__unstick:hover {
+  background: color-mix(in srgb, var(--accent-2) 20%, transparent);
+  color: var(--fg-bright);
+}
+
+/* -- result -- */
+
+.chain__found {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--fg-bright);
+}
+
+.chain__actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.chain__act {
+  flex: 1 1 auto;
+  min-height: 40px;
+  background: transparent;
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.chain__act:hover {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--fg-bright);
+}
+
+.chain__act--soft {
+  border-color: var(--panel-edge);
+  color: var(--fg-dim);
+}
+
+.chain__act--soft:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+}
+
+/* ---- the token rack ---- */
+
+.tokens {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tokens:empty {
+  display: none;
+}
+
+/*
+ * An earned token is the rarest thing on screen, so it gets the loudest
+ * chrome in the HUD -- if you have one you should never forget it.
+ */
+.token {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  background: var(--bg-deep);
+  border: 1px solid var(--accent-2);
+  color: var(--accent-2);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 4px 8px;
+  min-height: 34px;
+  cursor: pointer;
+  animation: token-arrive 2.4s ease-out 3;
+}
+
+.token:hover {
+  background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+  color: var(--fg-bright);
+}
+
+.token__code {
+  font-size: 8px;
+  opacity: 0.85;
+}
+
+@keyframes token-arrive {
+  0%, 100% { box-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  50% { box-shadow: 0 0 14px var(--accent-2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .token,
+  .chainwin.is-snagged .chain__bar { animation: none; }
+}
+
+[data-layout='mobile'] .chainwin {
+  max-width: 100%;
+}
+
+[data-layout='mobile'] .chain__cmd,
+[data-layout='mobile'] .chain__unstick,
+[data-layout='mobile'] .chain__act {
+  min-height: 46px;
+  font-size: 12px;
+}
+
+/* ---- spending a token ---- */
+
+/*
+ * Spending a token is the biggest single thing the player can do, so it
+ * gets the screen for a moment. Non-interactive and pointer-transparent --
+ * the board underneath stays playable through it.
+ */
+.token-flash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 34%;
+  z-index: 900;
+  text-align: center;
+  pointer-events: none;
+  animation: token-flash-in 1.8s ease-out forwards;
+}
+
+.token-flash__title {
+  font-size: clamp(22px, 5vw, 48px);
+  letter-spacing: 0.3em;
+  color: var(--fg-bright);
+  text-shadow: 0 0 24px var(--glow);
+}
+
+.token-flash__code {
+  margin-top: 0.4rem;
+  font-size: 12px;
+  letter-spacing: 0.34em;
+  color: var(--accent-2);
+}
+
+@keyframes token-flash-in {
+  0% { opacity: 0; transform: scale(0.9); }
+  14% { opacity: 1; transform: scale(1); }
+  72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Their controls are down. A cool wash, opposite to every red alarm state. */
+.shell.is-bypassing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 540;
+  pointer-events: none;
+  box-shadow: inset 0 0 120px color-mix(in srgb, var(--ok) 30%, transparent);
+  animation: bypass-wash 2.4s ease-in-out infinite;
+}
+
+@keyframes bypass-wash {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.75; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .token-flash,
+  .shell.is-bypassing::before { animation: none; }
+}

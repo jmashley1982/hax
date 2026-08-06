@@ -1,4 +1,4 @@
-import type { InteractionMode, ThemeId } from './events'
+import type { PlayMode, ThemeId } from './events'
 import { hashSeed } from './rng'
 
 /**
@@ -26,7 +26,7 @@ export const LAYER_ORDER: readonly LayerId[] = [
 export interface GameState {
   seed: number
   seedLabel: string
-  mode: InteractionMode
+  mode: PlayMode
   theme: ThemeId
   layer: LayerId
   heat: number // 0..100, detection meter
@@ -52,7 +52,7 @@ export function createInitialState(seedLabel?: string): GameState {
   return {
     seed: hashSeed(label),
     seedLabel: label,
-    mode: 'hybrid',
+    mode: 'leet',
     theme: 'phosphor',
     layer: 'surface',
     heat: 0,
@@ -118,7 +118,13 @@ export function applySavedCareer(state: GameState): void {
   if (typeof saved.deepestLayer === 'string' && LAYER_ORDER.includes(saved.deepestLayer)) {
     state.deepestLayer = saved.deepestLayer
   }
-  if (saved.mode) state.mode = saved.mode
+  // Anyone who played before the play-mode rework has 'hybrid'/'chaos'/
+  // 'intent' in localStorage. Those are no longer valid PlayModes, and
+  // restoring one would index PLAY_MODES with a missing key -- so validate
+  // rather than trust, and fall through to the default.
+  if (saved.mode === 'casual' || saved.mode === 'leet' || saved.mode === 'irl') {
+    state.mode = saved.mode
+  }
   if (saved.theme) state.theme = saved.theme
 }
 

@@ -55,7 +55,23 @@ export class IntegritySystem {
   private criticalFired = false
   private overrunFired = false
 
+  /**
+   * Difficulty scalars from the chosen play mode (core/progress.ts).
+   *
+   * Applied here rather than at every call site on purpose: there are a
+   * dozen `integrity.damage(...)` calls scattered across the shell, and
+   * scaling each one individually would guarantee that the next penalty
+   * added forgets to. One choke point, no exceptions.
+   */
+  private damageMul = 1
+  private regenMul = 1
+
   constructor(private state: GameState) {}
+
+  setDifficulty(damageMul: number, regenMul: number): void {
+    this.damageMul = damageMul
+    this.regenMul = regenMul
+  }
 
   get value(): number {
     return this.state.integrity
@@ -67,7 +83,7 @@ export class IntegritySystem {
   }
 
   damage(amount: number): void {
-    this.state.integrity = clamp(this.state.integrity - amount, 0, 100)
+    this.state.integrity = clamp(this.state.integrity - amount * this.damageMul, 0, 100)
   }
 
   repair(amount: number): void {
@@ -80,7 +96,7 @@ export class IntegritySystem {
    *        you have to actually clear the threat first.
    */
   tick(dtMs: number, underPressure: boolean): IntegrityEvents {
-    if (!underPressure) this.repair((REGEN_PER_SEC * dtMs) / 1000)
+    if (!underPressure) this.repair((REGEN_PER_SEC * this.regenMul * dtMs) / 1000)
 
     let warn = false
     let critical = false

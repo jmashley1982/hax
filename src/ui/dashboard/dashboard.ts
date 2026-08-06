@@ -2,7 +2,7 @@ import { saveState, type GameState } from '@/core/state'
 import { cycleTheme } from '@/themes/themes'
 import { generateContracts, sectorLabel, type Contract } from '@/sim/contracts'
 import { mulberry32, int, pick } from '@/core/rng'
-import type { InteractionMode } from '@/core/events'
+import { PLAY_MODES, PLAY_MODE_ORDER } from '@/core/progress'
 
 /**
  * The workstation dashboard -- the game's home base (plan §16A).
@@ -152,27 +152,20 @@ export class Dashboard {
     const modeRow = document.createElement('div')
     modeRow.className = 'dash__field'
     const modeLab = document.createElement('span')
-    modeLab.textContent = 'INPUT'
+    modeLab.textContent = 'MODE'
     const modeBtn = document.createElement('button')
-    modeBtn.className = 'dash__toggle'
-    const modes: InteractionMode[] = ['hybrid', 'chaos', 'intent']
-    // INTENT deliberately makes raw keystrokes inert, which is impossible to
-    // guess from the word "INTENT" alone -- picking it and then finding the
-    // windows unresponsive reads as a broken game, not as a mode.
-    const modeBlurbs: Record<InteractionMode, string> = {
-      hybrid: 'mash keys AND type commands',
-      chaos: 'mash keys, no commands needed',
-      intent: 'typed commands only -- keys alone do nothing',
-    }
+    modeBtn.className = 'dash__toggle dash__toggle--mode'
     const modeHint = document.createElement('div')
     modeHint.className = 'dash__fieldhint'
     const paintMode = (): void => {
-      modeBtn.textContent = this.state.mode.toUpperCase()
-      modeHint.textContent = modeBlurbs[this.state.mode]
+      const p = PLAY_MODES[this.state.mode]
+      modeBtn.textContent = p.label
+      modeBtn.dataset.mode = p.id
+      modeHint.textContent = p.blurb
     }
     modeBtn.addEventListener('click', () => {
-      const i = modes.indexOf(this.state.mode)
-      this.state.mode = modes[(i + 1) % modes.length] ?? 'hybrid'
+      const i = PLAY_MODE_ORDER.indexOf(this.state.mode)
+      this.state.mode = PLAY_MODE_ORDER[(i + 1) % PLAY_MODE_ORDER.length] ?? 'leet'
       paintMode()
       saveState(this.state)
     })

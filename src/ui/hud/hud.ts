@@ -1,5 +1,6 @@
 import { store } from '@/core/store'
 import { LAYER_ORDER, type GameState } from '@/core/state'
+import type { Token, TokenPouch } from '@/sim/tokens'
 
 /**
  * Top-right HUD: score, layer, breach progress, heat. The breach bar is
@@ -18,11 +19,15 @@ export class Hud {
   private heatValue: HTMLElement
   private scoreValue: HTMLElement
   private ladderEl!: HTMLElement
+  private tokensEl!: HTMLElement
 
   constructor(
     mountPoint: HTMLElement,
     private state: GameState,
     private getTension: () => number,
+    /** Earned skeleton keys / trojan bypasses. Clicking a chip spends it. */
+    private pouch?: TokenPouch,
+    private onSpendToken?: (token: Token) => void,
   ) {
     this.el = document.createElement('div')
     this.el.className = 'hud'
@@ -97,8 +102,18 @@ export class Hud {
     this.integrityValue.className = 'hud__value'
     intRow.append(intLabel, intBar, this.integrityValue)
 
-    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow, intRow)
+    // Earned tokens sit directly under the meters: they are spent in
+    // response to what those meters are doing, so they belong next to them.
+    this.tokensEl = document.createElement('div')
+    this.tokensEl.className = 'tokens'
+
+    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow, intRow, this.tokensEl)
     mountPoint.appendChild(this.el)
+
+    if (this.pouch) {
+      this.pouch.onChange(() => this.renderTokens())
+      this.renderTokens()
+    }
 
     this.render()
     this.off = store.on('tick', () => this.render())
@@ -129,6 +144,33 @@ export class Hud {
     this.heatFill.style.width = `${heat}%`
     this.heatFill.classList.toggle('is-warn', heat >= 55 && heat < 88)
     this.heatFill.classList.toggle('is-critical', heat >= 88)
+  }
+
+  /**
+   * Rebuilt only when the pouch changes, never per frame -- these chips
+   * carry an arrival animation, and re-creating them 60 times a second
+   * would restart it every frame and leave them permanently flashing.
+   */
+  private renderTokens(): void {
+    if (!this.pouch) return
+    this.tokensEl.innerHTML = ''
+    for (const token of this.pouch.all) {
+      const chip = document.createElement('button')
+      chip.className = 'token'
+      chip.dataset.kind = token.kind
+      chip.title = token.effect
+      const label = document.createElement('span')
+      label.textContent = token.label
+      const code = document.createElement('span')
+      code.className = 'token__code'
+      code.textContent = token.code
+      chip.append(label, code)
+      chip.addEventListener('click', () => {
+        const taken = this.pouch?.take(token.id)
+        if (taken) this.onSpendToken?.(taken)
+      })
+      this.tokensEl.appendChild(chip)
+    }
   }
 
   destroy(): void {
