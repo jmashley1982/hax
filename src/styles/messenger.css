@@ -7,13 +7,17 @@
  * can find without hunting, because the whole point is that you glance at
  * it all game and once in a while it says something that matters.
  */
+/*
+ * Shares the rail with the terminal. `flex: 1 1 auto` + `min-height: 0`
+ * rather than a percentage cap: the offer button lives at the bottom of
+ * this panel, and a fixed max-height clipped it off the screen exactly
+ * when an offer was on the table -- the one moment it has to be visible.
+ */
 .msgr {
-  position: absolute;
-  left: 12px;
-  bottom: 88px;
-  z-index: 480;
-  width: 288px;
-  max-height: 42vh;
+  position: relative;
+  flex: 1 1 auto;
+  width: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   /*

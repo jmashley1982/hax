@@ -1,7 +1,14 @@
 /* ---- TARGET window: the real site, corrupting with depth (plan §15B) ---- */
 
+/* The dossier is deliberately larger than one slot -- it is the thing you
+   are breaking into. An explicit min-height matters: a window is spawned
+   and THEN given its body, so without one it measures ~40px tall at the
+   moment other windows are choosing slots, and they take the space it is
+   about to grow into. */
 .win.target-site {
-  width: 480px;
+  width: 468px;
+  max-width: 468px;
+  min-height: 356px;
 }
 
 .target-site__body {

@@ -14,6 +14,11 @@ export const AVAILABLE_THEMES: readonly ThemeId[] = ['phosphor', 'amber', 'neon'
 
 export function applyTheme(theme: ThemeId): void {
   document.documentElement.dataset.theme = theme
+  // The period chrome is structure, not colour -- it composes with every
+  // palette rather than being one of them, so a green-phosphor System 7
+  // is a thing you can have. Set here so a future flat chrome is one
+  // attribute away rather than a rewrite.
+  document.documentElement.dataset.chrome = 'classic'
   store.emit('theme:change', { theme })
 }
 

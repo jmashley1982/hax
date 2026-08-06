@@ -305,13 +305,13 @@
    ============================================================ */
 
 .camwin {
-  min-width: 264px;
+  min-width: 250px;
 }
 
 .camwin__stage {
   position: relative;
-  width: 248px;
-  height: 148px;
+  width: 236px;
+  height: 132px;
   background: #000;
   overflow: hidden;
   border: 1px solid var(--panel-edge);
@@ -453,7 +453,7 @@
  * The window is now driven by the aspect ratio: a tall box that fits the
  * viewport, with the width following from it.
  */
-.docwin { min-width: 240px; max-width: min(46vw, 360px); }
+.docwin { min-width: 232px; max-width: 258px; }
 
 .docwin__frame {
   background: #000;
@@ -467,7 +467,7 @@
 .docwin__img {
   display: block;
   max-width: 100%;
-  max-height: 62vh;
+  max-height: 150px;
   object-fit: contain;
   /* Graded to sit in the CRT world rather than looking pasted in. */
   filter: grayscale(0.25) contrast(1.06) brightness(0.95);

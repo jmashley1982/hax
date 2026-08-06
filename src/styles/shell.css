@@ -3,17 +3,20 @@
   inset: 0;
 }
 
+/* In the desktop BAR, beside the icons and the status line. */
 .prompt {
-  position: absolute;
-  bottom: 2rem;
-  left: 3rem;
-  right: 3rem;
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
   z-index: 300;
   font-size: clamp(13px, 1.3vw, 17px);
   color: var(--fg-bright);
   text-shadow: 0 0 calc(var(--glow-strength) * 6px) var(--glow);
-  white-space: pre-wrap;
-  word-break: break-all;
+  /* One line. Wrapping made the taskbar grow and shrink as the generated
+     command changed length, which shifted the whole work area. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
 }
 
@@ -42,10 +45,8 @@
 }
 
 .statusbar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  position: relative;
+  flex: 0 0 auto;
   z-index: 400;
   display: flex;
   justify-content: space-between;

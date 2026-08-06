@@ -49,6 +49,7 @@ import { Messenger, type Offer } from './messenger'
 import { Manhunt } from './manhunt'
 import { TokenPouch, type Token } from '@/sim/tokens'
 import { BoardBudget } from '@/sim/boardBudget'
+import { DesktopLayout } from './desktop/layout'
 import type { TaskPanel } from './panels/panel'
 
 const BREAKTHROUGH_GRACE_MS = 2500
@@ -158,6 +159,8 @@ export class Shell {
    * other about how many windows existed.
    */
   private budget: BoardBudget
+  /** The four desktop regions. Every surface mounts into one of them. */
+  private desk!: DesktopLayout
   /**
    * Child components are held so destroy() can unhook them. Each of these
    * subscribes to the store or to window events, and removing only their
@@ -192,7 +195,8 @@ export class Shell {
     this.heat = new HeatSystem(state)
     this.integrity = new IntegritySystem(state)
     this.layers = new LayerSystem(state)
-    this.windows = new WindowManager(this.shellEl, mulberry32(state.seed + 2))
+    this.desk = new DesktopLayout(this.shellEl)
+    this.windows = new WindowManager(this.desk.work, mulberry32(state.seed + 2))
     this.budget = new BoardBudget(
       () => this.state.layer,
       () => this.state.mode,
@@ -201,9 +205,9 @@ export class Shell {
     this.windows.onWindowClosed(() => this.budget.noteClosed())
     this.windows.setCapacityProvider(() => this.budget.capacity)
 
-    this.terminal = new Terminal(this.shellEl)
+    this.terminal = new Terminal(this.desk.rail)
     this.crt = new CrtOverlay(this.shellEl, state.seed)
-    this.prompt = new Prompt(this.shellEl, {
+    this.prompt = new Prompt(this.desk.bar, {
       onKey: (char) => this.handleKey(char),
       onSubmit: (line) => this.handleSubmit(line),
       // A finished generated command prints to the terminal as if it ran,
@@ -219,13 +223,13 @@ export class Shell {
       nextCommand: () => this.content.line('shell', 'cmd'),
     })
     this.hud = new Hud(
-      this.shellEl,
+      this.desk.top,
       state,
       () => this.layers.tension,
       this.pouch,
       (token) => this.spendToken(token),
     )
-    this.objective = new ObjectiveBar(this.shellEl)
+    this.objective = new ObjectiveBar(this.desk.top)
 
     this.director = new Director(
       this.windows,
@@ -247,9 +251,9 @@ export class Shell {
     // Panels get the lion's share of the budget; the remainder is what
     // ambient popups may use. Both are bounded by the same number, so the
     // total on screen cannot run away.
-    this.director.setBudgetProvider(() => Math.max(3, this.budget.capacity - 1))
+    this.director.setBudgetProvider(() => Math.max(3, this.budget.capacity - 2))
 
-    this.mountStatusBar(this.shellEl)
+    this.mountStatusBar(this.desk.bar)
     this.bindTargeting()
     this.bindModeHotkey()
     if (isMobileLayout()) {
@@ -262,7 +266,7 @@ export class Shell {
     // mean the second run ticks twice per frame and the third three times.
     // A pointer lost during the previous session must not leave ambient
     // spawning wedged off for the next one.
-    this.messenger = new Messenger(this.shellEl, mulberry32(state.seed + 12), contract.facts.org, {
+    this.messenger = new Messenger(this.desk.rail, mulberry32(state.seed + 12), contract.facts.org, {
       onAccept: (offer) => this.handleOffer(offer),
       line: (text) => store.emit('terminal:line', { text, tone: 'normal', speed: 0 }),
     })
@@ -388,6 +392,7 @@ export class Shell {
     this.crt.destroy()
     this.prompt.destroy()
     this.hud.destroy()
+    this.desk.destroy()
     clock.stop()
     this.shellEl.remove()
   }

@@ -114,6 +114,15 @@ export class Director {
   }
 
   spawn(): TaskPanel | null {
+    // The cap lives HERE, not only in tick(), because the Shell calls
+    // spawn() directly from five different "refill the board" loops
+    // (session start, breakthrough, ejection, overrun, manhunt escape).
+    // Those all used the layer's panelFloor and bypassed desiredCount
+    // entirely, which is how the board reached eight panels while the
+    // budget believed it was allowing three.
+    const cap = this.getWindowBudget?.()
+    if (cap !== undefined && this.panels.length >= cap) return null
+
     const pool = unlockedPanelTypes(this.state.layer)
     const activeTypes = this.panels.map((p) => p.id.split('-')[0] ?? '')
     const typeId = pickPanelType(pool, activeTypes, (arr) => pick(this.rng, arr))

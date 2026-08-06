@@ -1,0 +1,206 @@
+/* ============================================================
+   THE DESKTOP (ui/desktop/layout.ts)
+   Four named regions, plus period OS chrome layered on top of
+   whichever palette is active. The chrome is STRUCTURE; the
+   theme is COLOUR -- a green-phosphor System 7 is the point.
+   ============================================================ */
+
+.desk {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-areas:
+    'top  top'
+    'rail work'
+    'bar  bar';
+  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0;
+  /* A dithered desktop, the way a 1-bit OS filled dead space. Two offset
+     gradients make a checkerboard without an image. */
+  background-color: var(--bg-deep);
+  background-image:
+    linear-gradient(45deg, color-mix(in srgb, var(--fg-dim) 12%, transparent) 25%, transparent 25%),
+    linear-gradient(-45deg, color-mix(in srgb, var(--fg-dim) 12%, transparent) 25%, transparent 25%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
+}
+
+/* ---- TOP: menu bar, objective, meters, tokens ---- */
+
+.desk__top {
+  grid-area: top;
+  position: relative;
+  z-index: 700;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0 0.4rem 0.3rem;
+  background: var(--panel);
+  border-bottom: 2px solid var(--panel-edge);
+  /*
+   * Interactive, unlike the old floating HUD overlay. The token rack
+   * lives up here, and `.hud { pointer-events: none }` is what made an
+   * earned skeleton key impossible to click.
+   */
+  pointer-events: auto;
+}
+
+.desk__menu {
+  display: flex;
+  gap: 0.9rem;
+  padding: 3px 0.6rem 4px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--fg);
+  flex: 0 0 auto;
+}
+
+.desk__menu-item {
+  cursor: default;
+  user-select: none;
+}
+
+.desk__menu-item:hover {
+  background: var(--fg);
+  color: var(--bg-deep);
+}
+
+/* ---- RAIL: terminal and messenger, as siblings ---- */
+
+.desk__rail {
+  grid-area: rail;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 6px;
+  border-right: 2px solid var(--panel-edge);
+  overflow: hidden;
+}
+
+/* ---- WORK: the only place windows go ---- */
+
+.desk__work {
+  grid-area: work;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---- BAR: icons, prompt, status ---- */
+
+.desk__bar {
+  grid-area: bar;
+  position: relative;
+  z-index: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 4px 8px;
+  background: var(--panel);
+  border-top: 2px solid var(--panel-edge);
+  min-height: 34px;
+}
+
+/* ============================================================
+   CLASSIC CHROME  (:root[data-chrome='classic'])
+   Bevels, hard edges, no rounding, no soft shadows.
+   ============================================================ */
+
+:root[data-chrome='classic'] .desk__top,
+:root[data-chrome='classic'] .desk__bar {
+  border-color: var(--fg-dim);
+  box-shadow: inset 1px 1px 0 color-mix(in srgb, var(--fg) 35%, transparent),
+    inset -1px -1px 0 #000;
+}
+
+/* Windows get the era treatment: a raised outer bevel and a hard edge. */
+:root[data-chrome='classic'] .win {
+  border-radius: 0;
+  border: 1px solid #000;
+  box-shadow:
+    inset 1px 1px 0 color-mix(in srgb, var(--fg) 40%, transparent),
+    inset -1px -1px 0 #000,
+    2px 2px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* Pinstriped title bar, the System 6/7 tell. */
+:root[data-chrome='classic'] .win__title {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--fg) 55%, transparent) 0 1px,
+      transparent 1px 3px
+    ),
+    var(--panel);
+  border-bottom: 1px solid #000;
+  padding: 3px 6px;
+}
+
+:root[data-chrome='classic'] .win__title-text {
+  background: var(--panel);
+  padding: 0 6px;
+}
+
+/* A square close box at the left, as it was. */
+:root[data-chrome='classic'] .win__close {
+  order: -1;
+  margin-right: 6px;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  font-size: 0;
+  border: 1px solid #000;
+  background: var(--panel);
+  box-shadow: inset 1px 1px 0 color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+:root[data-chrome='classic'] .win__close:hover {
+  background: var(--fg);
+}
+
+/* Buttons and wells get matching bevels. */
+:root[data-chrome='classic'] button {
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 color-mix(in srgb, var(--fg) 42%, transparent),
+    inset -1px -1px 0 #000;
+}
+
+:root[data-chrome='classic'] button:active {
+  box-shadow:
+    inset -1px -1px 0 color-mix(in srgb, var(--fg) 42%, transparent),
+    inset 1px 1px 0 #000;
+}
+
+/* Hatched scrollbar troughs. */
+:root[data-chrome='classic'] * {
+  scrollbar-color: var(--fg-dim) var(--panel);
+}
+
+/* ---- mobile: regions linearise into the scrolling column ---- */
+
+[data-layout='mobile'] .desk {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background-image: none;
+}
+
+[data-layout='mobile'] .desk__rail {
+  border-right: none;
+  border-bottom: 1px solid var(--panel-edge);
+  max-height: 34vh;
+}
+
+[data-layout='mobile'] .desk__menu {
+  display: none;
+}
+
+[data-layout='mobile'] .desk__work {
+  overflow: visible;
+}

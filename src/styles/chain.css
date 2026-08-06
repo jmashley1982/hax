@@ -4,9 +4,12 @@
    lead -> scanner (which jams) -> decision -> a token you keep.
    ============================================================ */
 
+/* One slot wide, like everything else the spawner places. A window wider
+   than a slot makes neighbouring columns overlap by construction, which
+   no amount of collision checking can fix. */
 .chainwin {
-  min-width: 250px;
-  max-width: 320px;
+  min-width: 240px;
+  max-width: 258px;
 }
 
 .chain {

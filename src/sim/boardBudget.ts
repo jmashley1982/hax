@@ -31,12 +31,12 @@ import type { PlayMode } from '@/core/events'
  */
 
 const CAPACITY_BY_LAYER: Record<LayerId, number> = {
-  surface: 4,
-  perimeter: 5,
-  intranet: 6,
-  core: 6,
-  kernel: 7,
-  physical: 7,
+  surface: 3,
+  perimeter: 4,
+  intranet: 4,
+  core: 5,
+  kernel: 5,
+  physical: 6,
 }
 
 const CAPACITY_BY_MODE: Record<PlayMode, number> = {
@@ -45,8 +45,16 @@ const CAPACITY_BY_MODE: Record<PlayMode, number> = {
   irl: 2,
 }
 
-/** Slots kept free for the TARGET dossier and any threat/hostile windows. */
-const FIXTURE_RESERVE = 2
+/**
+ * Slots kept free for fixtures.
+ *
+ * Four, not two: the TARGET dossier is 480px wide and eats TWO columns on
+ * its own, and a counter-intrusion wave adds up to five more windows that
+ * bypass the budget entirely. Reserving two left the board needing 13
+ * slots in a 12-slot grid -- a guaranteed overlap that no amount of
+ * collision checking can avoid, because the windows genuinely did not fit.
+ */
+const FIXTURE_RESERVE = 4
 
 const RELEASE_BY_MODE: Record<PlayMode, number> = {
   casual: 0,

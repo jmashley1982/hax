@@ -1,4 +1,4 @@
-import { int, type Rng } from '@/core/rng'
+import type { Rng } from '@/core/rng'
 import { Win, type WindowOptions } from './window'
 
 /**
@@ -6,8 +6,8 @@ import { Win, type WindowOptions } from './window'
  * windows vary a little around this; the grid only has to be close enough
  * that neighbouring slots do not visibly collide.
  */
-const SLOT_W = 280
-const SLOT_H = 245
+const SLOT_W = 268
+const SLOT_H = 228
 
 export type Placement = 'cascade' | 'center' | 'random'
 
@@ -26,7 +26,13 @@ export class WindowManager {
   /** Notified whenever a budgeted (non-modal, non-pinned) window closes. */
   private closeListeners: Array<() => void> = []
 
-  constructor(mountPoint: HTMLElement, private rng: Rng) {
+  /**
+   * `rng` is retained deliberately: placement is now deterministic (a real
+   * occupancy search rather than a jittered guess), but the seeded stream
+   * has to keep its shape for `?seed=` reproducibility, and future
+   * placement variation belongs on this stream rather than a fresh one.
+   */
+  constructor(mountPoint: HTMLElement, _rng: Rng) {
     this.layer = document.createElement('div')
     this.layer.className = 'win-layer'
     mountPoint.appendChild(this.layer)
@@ -111,12 +117,30 @@ export class WindowManager {
    * windows -- six of them had nowhere to go and piled up.
    */
   get gridSlots(): number {
-    const vw = Math.max(window.innerWidth, 480)
-    const vh = Math.max(window.innerHeight, 360)
-    const fieldLeft = Math.round(Math.min(vw * 0.22, 330))
-    const cols = Math.max(1, Math.floor((vw - fieldLeft - 24) / SLOT_W))
-    const rows = Math.max(1, Math.floor((vh - 90 - 90) / SLOT_H))
+    const { cols, rows } = this.grid()
     return cols * rows
+  }
+
+  /**
+   * The placement grid, measured from the WORK AREA rather than the
+   * viewport.
+   *
+   * This is the whole point of the desktop regions. Previously the grid
+   * was derived from window.innerWidth/Height minus guessed insets for
+   * the terminal strip, the HUD and the status bar -- numbers that had to
+   * agree with four separate stylesheets and did not. Now the work area
+   * is a real box that owns its space, so "how many windows fit without
+   * overlapping" is a question with an actual answer.
+   */
+  private grid(): { cols: number; rows: number; w: number; h: number } {
+    const w = Math.max(this.layer.clientWidth, 320)
+    const h = Math.max(this.layer.clientHeight, 240)
+    return {
+      cols: Math.max(1, Math.floor(w / SLOT_W)),
+      rows: Math.max(1, Math.floor(h / SLOT_H)),
+      w,
+      h,
+    }
   }
 
   /**
@@ -162,10 +186,28 @@ export class WindowManager {
    * windows spawn straight on top of the thing being used, which is exactly
    * the "windows pop up over it as you're using" complaint.
    */
-  private avoidRect: DOMRect | null = null
+  private avoidRect: { left: number; top: number; right: number; bottom: number } | null = null
 
+  /**
+   * Takes a viewport rect and stores it in WORK-AREA coordinates.
+   *
+   * Placement works in the layer's coordinate space (offsetLeft/offsetTop),
+   * so a raw getBoundingClientRect() would be offset by however far the
+   * work area sits from the viewport origin -- the avoid test would then
+   * be protecting a rectangle nowhere near the panel in use.
+   */
   setAvoidRect(rect: DOMRect | null): void {
-    this.avoidRect = rect
+    if (!rect) {
+      this.avoidRect = null
+      return
+    }
+    const base = this.layer.getBoundingClientRect()
+    this.avoidRect = {
+      left: rect.left - base.left,
+      top: rect.top - base.top,
+      right: rect.right - base.left,
+      bottom: rect.bottom - base.top,
+    }
   }
 
   private overlapsAvoid(x: number, y: number, w = SLOT_W, h = SLOT_H): boolean {
@@ -189,8 +231,14 @@ export class WindowManager {
       const el = w.el
       const wx = el.offsetLeft
       const wy = el.offsetTop
-      const ww = el.offsetWidth || SLOT_W
-      const wh = el.offsetHeight || SLOT_H
+      // Measure conservatively. A window is spawned and THEN given its
+      // body, so anything created earlier in the same tick reports a
+      // height from before its content existed -- the TARGET dossier
+      // measured ~40px tall while it is really ~300, and panels were
+      // handed the slot it was about to grow into. Never assume a window
+      // is smaller than one slot.
+      const ww = Math.max(el.offsetWidth, SLOT_W)
+      const wh = Math.max(el.offsetHeight, SLOT_H)
       // Deliberately generous: touching edges still counts as a collision,
       // because two windows flush against each other read as a pile.
       if (x < wx + ww && x + SLOT_W > wx && y < wy + wh && y + SLOT_H > wy) return true
@@ -199,72 +247,55 @@ export class WindowManager {
   }
 
   private computePosition(placement: Placement): { x: number; y: number } {
-    const vw = Math.max(window.innerWidth, 480)
-    const vh = Math.max(window.innerHeight, 360)
+    const { cols, rows, w, h } = this.grid()
 
-    // Preferred spots for the non-grid placements. If the preferred spot is
-    // free we take it; if not we fall through to the grid search rather
-    // than dropping a window on top of whatever is already there. Skipping
-    // this check is what left the TARGET dossier permanently overlapped by
-    // centre-placed threat windows.
+    // Preferred spots for the non-grid placements. If the preferred spot
+    // is free we take it; otherwise we fall through to the grid search
+    // rather than dropping a window on top of what is already there.
+    // Skipping this check is what left the TARGET dossier permanently
+    // overlapped by centre-placed threat windows.
     if (placement === 'center') {
-      const p = { x: vw / 2 - 190, y: vh / 2 - 110 }
-      if (!this.slotTaken(p.x, p.y)) return this.clampToBoard(p, vw, vh)
+      const p = { x: Math.round(w / 2 - SLOT_W / 2), y: Math.round(h / 2 - SLOT_H / 2) }
+      if (!this.slotTaken(p.x, p.y)) return this.clampToBoard(p, w, h)
     }
     if (placement === 'cascade') {
       this.cascadeIndex = (this.cascadeIndex + 1) % 8
-      const p = { x: 80 + this.cascadeIndex * 28, y: 100 + this.cascadeIndex * 24 }
-      if (!this.slotTaken(p.x, p.y)) return this.clampToBoard(p, vw, vh)
+      const p = { x: 12 + this.cascadeIndex * 22, y: 10 + this.cascadeIndex * 18 }
+      if (!this.slotTaken(p.x, p.y)) return this.clampToBoard(p, w, h)
     }
 
-    {
-      // Task panels place into loose slots across the right ~72% of the
-      // screen (the left strip belongs to the terminal), jittered so the
-      // board looks scattered and busy rather than gridded. Slots account
-      // for panel size (PANEL_W/H) so spawns don't stack on top of each
-      // other -- overlap should come from the player dragging, not from
-      // the spawner piling windows in one corner.
-      const PANEL_W = 300
-      const PANEL_H = 210
-      const fieldLeft = Math.round(Math.min(vw * 0.22, 330))
-      const fieldTop = 90
-      const cols = Math.max(1, Math.floor((vw - fieldLeft - 24) / PANEL_W))
-      const rows = Math.max(1, Math.floor((vh - fieldTop - 90) / PANEL_H))
-      const spreadW = (vw - fieldLeft - PANEL_W - 24) / Math.max(1, cols - 1)
-      const spreadH = (vh - fieldTop - PANEL_H - 90) / Math.max(1, rows - 1)
-      // Walk every slot looking for one that is genuinely free, starting
-      // from a rotating offset so the board does not always fill
-      // top-left-first. Only if the whole grid is occupied do we fall back
-      // to the least-bad option -- which the budget should make rare.
-      const slots = Math.max(1, cols * rows)
-      const start = this.cascadeIndex % slots
-      this.cascadeIndex += 1
-      let fallback: { x: number; y: number } | null = null
+    // Spread the slots evenly across the work area rather than packing
+    // them left, so a half-full board still looks like a desktop.
+    const spreadW = cols > 1 ? (w - SLOT_W) / (cols - 1) : 0
+    const spreadH = rows > 1 ? (h - SLOT_H) / (rows - 1) : 0
+    const slots = Math.max(1, cols * rows)
+    const start = this.cascadeIndex % slots
+    this.cascadeIndex += 1
+    let fallback: { x: number; y: number } | null = null
 
-      for (let i = 0; i < slots; i++) {
-        const slot = (start + i) % slots
-        const col = slot % cols
-        const row = Math.floor(slot / cols)
-        // Jitter is small and applied AFTER the occupancy test would be
-        // meaningful, so it never pushes a window into its neighbour.
-        const candidate = {
-          x: Math.round(fieldLeft + col * (cols > 1 ? spreadW : 0) + int(this.rng, -6, 6)),
-          y: Math.round(fieldTop + row * (rows > 1 ? spreadH : 0) + int(this.rng, -6, 6)),
-        }
-        fallback ??= candidate
-        if (this.slotTaken(candidate.x, candidate.y)) continue
-        if (this.overlapsAvoid(candidate.x, candidate.y)) continue
-        return this.clampToBoard(candidate, vw, vh)
+    for (let i = 0; i < slots; i++) {
+      const slot = (start + i) % slots
+      const col = slot % cols
+      const row = Math.floor(slot / cols)
+      const candidate = {
+        x: Math.round(col * spreadW),
+        y: Math.round(row * spreadH),
       }
-      return this.clampToBoard(fallback ?? { x: fieldLeft, y: fieldTop }, vw, vh)
+      fallback ??= candidate
+      if (this.slotTaken(candidate.x, candidate.y)) continue
+      if (this.overlapsAvoid(candidate.x, candidate.y)) continue
+      return this.clampToBoard(candidate, w, h)
     }
+    return this.clampToBoard(fallback ?? { x: 0, y: 0 }, w, h)
   }
 
   /** Never place a window where part of it cannot be reached. */
-  private clampToBoard(p: { x: number; y: number }, vw: number, vh: number): { x: number; y: number } {
+  private clampToBoard(p: { x: number; y: number }, w: number, h: number): { x: number; y: number } {
+    // Coordinates are relative to the work area now, so the clamp is just
+    // "inside the box" rather than a set of guessed viewport insets.
     return {
-      x: Math.max(8, Math.min(p.x, vw - SLOT_W - 12)),
-      y: Math.max(52, Math.min(p.y, vh - 140)),
+      x: Math.max(0, Math.min(p.x, Math.max(0, w - SLOT_W))),
+      y: Math.max(0, Math.min(p.y, Math.max(0, h - 120))),
     }
   }
 

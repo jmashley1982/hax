@@ -10,7 +10,7 @@
  * non-overlapping placement achievable at all.
  */
 .panel .win__body {
-  max-height: 208px;
+  max-height: 162px;
   overflow-y: auto;
   scrollbar-width: thin;
 }

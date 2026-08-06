@@ -1,3 +1,6 @@
+/* Fills the desktop WORK region. Windows position against this box, so
+   placement coordinates mean "inside the work area" rather than
+   "somewhere in the viewport". */
 .win-layer {
   position: absolute;
   inset: 0;
@@ -32,7 +35,7 @@
 .win {
   position: absolute;
   min-width: 260px;
-  max-width: min(90vw, 480px);
+  max-width: 258px;
   background: var(--panel);
   border: 1px solid var(--panel-edge);
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(0, 0, 0, 0.35);

@@ -1,7 +1,7 @@
+/* Sits in the desktop TOP region. Interactive -- see .tokens. */
 .hud {
-  position: absolute;
-  top: 0.9rem;
-  right: 1.2rem;
+  position: relative;
+  margin-left: auto;
   z-index: 400;
   display: flex;
   flex-direction: column;
@@ -76,10 +76,9 @@
   text-shadow: 0 0 8px var(--glow);
 }
 
+/* In the desktop TOP region, beside the menu bar. */
 .objective {
-  position: absolute;
-  top: 0.9rem;
-  left: 1.2rem;
+  position: relative;
   z-index: 400;
   display: flex;
   align-items: center;
@@ -87,7 +86,9 @@
   font-size: 12px;
   letter-spacing: 0.06em;
   pointer-events: none;
-  max-width: 55vw;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 3px;
 }
 
 .objective.is-hidden {

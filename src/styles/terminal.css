@@ -2,13 +2,18 @@
    panels are the foreground (plan §13c) -- so this is a dimmed strip down
    the left that keeps the screen feeling alive without competing for
    attention with the things you actually click. */
+/* Lives in the desktop RAIL now, as a real region member, rather than as
+   an absolutely-positioned strip that everything else had to dodge. */
 .terminal {
-  position: absolute;
-  left: 0;
-  top: 3.2rem;
-  bottom: 3.5rem;
-  width: min(30vw, 380px);
-  padding: 0 1rem;
+  position: relative;
+  /* The messenger is the interactive half of the rail, so the terminal --
+     which is texture -- yields space to it rather than the other way. */
+  flex: 1 1 40%;
+  width: auto;
+  min-height: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--panel-edge);
+  background: var(--bg-deep);
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
