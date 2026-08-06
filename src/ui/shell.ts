@@ -32,6 +32,8 @@ import { ObjectiveBar } from './hud/objective'
 import { WindowManager } from './windows/manager'
 import { spawnWarningDialog } from './windows/dialogs'
 import { spawnProcessWindow } from './windows/processWindow'
+import { spawnCamWindow } from './windows/camWindow'
+import { preloadAvailability } from '@/media/videoRegistry'
 import { TouchInput } from './touch'
 import { isMobileLayout } from '@/core/device'
 import { BruteForcePanel } from './panels/bruteForce'
@@ -194,6 +196,9 @@ export class Shell {
     this.offTick = store.on('tick', ({ dt }) => this.onTick(dt))
 
     clock.start()
+    // Warm the clip-availability cache in the background so the first camera
+    // popup doesn't spend its lifetime waiting on a probe.
+    preloadAvailability()
     this.scoreAtStart = state.score
     this.runBootSequence()
 
@@ -706,6 +711,18 @@ export class Shell {
         for (let i = 0; i < n; i++) {
           spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
         }
+        // Camera feeds ride the same cadence but land far less often, and
+        // get much more likely as you approach building control -- owning
+        // the cameras is the payoff of getting physical.
+        const camChance = 0.1 + LAYER_ORDER.indexOf(this.state.layer) * 0.07
+        if (this.rng() < camChance) {
+          spawnCamWindow({
+            manager: this.windows,
+            rng: this.rng,
+            labelPrefix: this.target.org.toUpperCase(),
+            kind: this.rng() < 0.75 ? 'cctv' : 'doorcam',
+          })
+        }
       }
     }
   }
@@ -725,6 +742,18 @@ export class Shell {
     // Severity rises with depth and with how exposed the player already is,
     // so a weak machine gets hit harder -- the compounding half of the loop.
     const intensity = Math.min(1, severity + this.layers.tension * 0.2 + this.integrity.exposure * 0.4)
+
+    // The single most unsettling beat available: the same camera window
+    // that means "we own their building" now points at the player. Same
+    // component, opposite meaning.
+    spawnCamWindow({
+      manager: this.windows,
+      rng: this.rng,
+      kind: 'webcam',
+      labelPrefix: 'YOUR MACHINE',
+      hostile: true,
+      ttlMs: 9000,
+    })
 
     this.reverseHack = new ReverseHack({
       manager: this.windows,
@@ -1128,6 +1157,22 @@ export class Shell {
       speed: 1,
     })
     this.objective.set(`SURVIVE ${this.target.org}'s incident response`)
+
+    // Building control means the cameras are yours -- the original brief's
+    // payoff shot. Staggered so they arrive as a bank coming online.
+    for (let i = 0; i < 3; i++) {
+      this.later(
+        () =>
+          spawnCamWindow({
+            manager: this.windows,
+            rng: this.rng,
+            labelPrefix: this.target.org.toUpperCase(),
+            kind: i === 2 ? 'thermal' : 'cctv',
+            ttlMs: 16000,
+          }),
+        400 + i * 550,
+      )
+    }
     this.targetSite?.showDefaced(this.target.org)
 
     const kinds: ThreatKind[] = ['traceback', 'reverseShell', 'lockdown']

@@ -113,6 +113,11 @@ export class Win {
     this.el.style.zIndex = String(z)
   }
 
+  /** True once closed -- lets async work (media probes, fetches) bail instead of touching a dead window. */
+  get isClosed(): boolean {
+    return this.closed
+  }
+
   close(): void {
     if (this.closed) return
     this.closed = true

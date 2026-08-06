@@ -285,3 +285,95 @@
 [data-layout='mobile'] .win.hostile {
   order: -1;
 }
+
+/* ============================================================
+   CAMERA FEED POPUPS (ui/windows/camWindow.ts)
+   Chrome is identical whether the source is a real clip or the
+   canvas stand-in, so feeds upgrade invisibly as media is added.
+   ============================================================ */
+
+.camwin {
+  min-width: 264px;
+}
+
+.camwin__stage {
+  position: relative;
+  width: 248px;
+  height: 148px;
+  background: #000;
+  overflow: hidden;
+  border: 1px solid var(--panel-edge);
+}
+
+.camwin__canvas,
+.camwin__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The synthetic feed renders at 160x96 and is scaled up; keeping the
+     upscale hard-edged preserves the chunky low-bitrate look instead of
+     smoothing it into mush. */
+  image-rendering: pixelated;
+  filter: grayscale(0.35) contrast(1.1) brightness(1.15);
+}
+
+.camwin--hostile .camwin__canvas,
+.camwin--hostile .camwin__video {
+  filter: grayscale(0.1) contrast(1.2) saturate(1.3) hue-rotate(-15deg);
+}
+
+.camwin__hud {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  right: 5px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: #d8f0d8;
+  text-shadow: 0 0 4px #000, 0 0 2px #000;
+  pointer-events: none;
+}
+
+.camwin__rec {
+  color: #ff4a3d;
+  animation: camwin-rec 1.2s steps(1) infinite;
+}
+
+@keyframes camwin-rec {
+  0%, 60% { opacity: 1; }
+  61%, 100% { opacity: 0.25; }
+}
+
+.camwin__id {
+  position: absolute;
+  bottom: 4px;
+  left: 5px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #d8f0d8;
+  text-shadow: 0 0 4px #000, 0 0 2px #000;
+  pointer-events: none;
+}
+
+/* Scanline overlay across the picture -- ties the feed to the rest of the
+   app's CRT look regardless of what the clip itself contains. */
+.camwin__stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.28) 0 1px, transparent 1px 3px);
+}
+
+[data-layout='mobile'] .camwin__stage {
+  width: 100%;
+  height: 168px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .camwin__rec { animation: none; }
+}
