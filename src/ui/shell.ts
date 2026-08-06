@@ -17,7 +17,7 @@ import { LockoutDirector } from '@/sim/lockoutDirector'
 import { LockoutOverlay } from './lockout'
 import { ReverseHack, reverseHackOpener } from './reverseHack'
 import { DragExfilPanel } from './panels/dragExfil'
-import { dossierFor, type ReconResult } from '@/sim/recon'
+import type { ReconResult } from '@/sim/recon'
 import { ContentEngine } from '@/content'
 import type { MissionFacts } from '@/content/grammar'
 import type { LayerId } from '@/core/state'
@@ -257,7 +257,7 @@ export class Shell {
 
     this.targetSite = new TargetSitePanel(this.windows)
     this.targetSite.setDepth(this.layers.current.id)
-    this.targetSite.update(dossierFor(this.contract))
+    this.targetSite.update(this.contract)
 
     store.emit('terminal:line', {
       text: `>> CONTRACT :: ${this.contract.facts.org} (${this.contract.facts.domain}) -- TIER ${this.contract.tier}`,
@@ -1258,7 +1258,7 @@ export class Shell {
       applyLayerPalette(this.activePalettes?.[this.layers.current.id] ?? this.layers.current.palette)
       applyLayerSkin(this.layers.current.id)
       this.targetSite?.setDepth(this.layers.current.id)
-      if (this.recon) this.targetSite?.update(this.recon)
+      this.targetSite?.update(this.contract)
 
       store.emit('terminal:line', {
         text: `>> reconnected :: ${this.target.org} (${this.target.domain}) -- back to SURFACE`,

@@ -175,3 +175,17 @@
   text-shadow: 0 0 10px var(--danger);
   animation: target-defaced-flicker 220ms steps(2) infinite;
 }
+
+/*
+ * The entity graph is drawn on its own dark canvas rather than a white
+ * page, so the iframe's default light background would flash and then
+ * frame it in white. It also runs taller than a homepage screenshot --
+ * the graph needs the room or the outer ring's labels clip.
+ */
+.target-site__body.target-site--graph {
+  height: 340px;
+}
+
+.target-site__body.target-site--graph .target-site__frame {
+  background: #05070a;
+}
