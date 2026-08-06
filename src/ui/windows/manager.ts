@@ -76,8 +76,12 @@ export class WindowManager {
     // Never evict a window the player is currently holding. Eviction is a
     // timer; a drag is a person. Closing a window mid-drag was one of the
     // three ways the cursor ended up stuck to a dead element.
+    // `i <` not `i <=`: with 5 evictable windows and a cap of 4 the
+    // inclusive form closed TWO, over-evicting by one every single spawn.
+    // Short-lived windows (chat messages, camera feeds) were being culled
+    // almost as fast as they appeared.
     const evictable = this.windows.filter((w) => !w.isModal && !w.isPinned && !w.isDragging)
-    for (let i = 0; i <= evictable.length - MAX_TRANSIENT; i++) {
+    for (let i = 0; i < evictable.length - MAX_TRANSIENT; i++) {
       evictable[i]?.close()
     }
 

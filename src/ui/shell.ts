@@ -33,7 +33,10 @@ import { WindowManager } from './windows/manager'
 import { spawnWarningDialog } from './windows/dialogs'
 import { spawnProcessWindow } from './windows/processWindow'
 import { spawnCamWindow } from './windows/camWindow'
+import { spawnAllyMessage, spawnOperatorMessage } from './windows/messageWindow'
 import { preloadAvailability } from '@/media/videoRegistry'
+import { preloadDocs } from '@/media/imageRegistry'
+import { spawnDocWindow } from './windows/docWindow'
 import { TouchInput } from './touch'
 import { isMobileLayout } from '@/core/device'
 import { isInteracting, resetInteraction } from '@/core/interaction'
@@ -207,6 +210,7 @@ export class Shell {
     // Warm the clip-availability cache in the background so the first camera
     // popup doesn't spend its lifetime waiting on a probe.
     preloadAvailability()
+    preloadDocs()
     this.scoreAtStart = state.score
     this.runBootSequence()
 
@@ -676,13 +680,28 @@ export class Shell {
       this.handleOverrun()
       return
     }
-    if (integrityEvents.critical && !this.reverseHack?.active) {
+    // A run can END on integrity, so its decline must be impossible to
+    // miss. A terminal line alone was not enough: players were hitting zero
+    // and reading the result as the game crashing.
+    if (integrityEvents.warn) {
+      store.emit('terminal:line', { text: '!! WORKSTATION INTEGRITY FALLING -- repel threats to recover', tone: 'warning', speed: 0 })
+      this.objective.setJob('WARNING -- workstation integrity falling')
+    }
+    if (integrityEvents.critical) {
       store.emit('terminal:line', {
-        text: '!! WORKSTATION INTEGRITY CRITICAL -- you are wide open',
+        text: '!!!! INTEGRITY CRITICAL -- ONE MORE HIT AND YOU ARE BURNED',
         tone: 'danger',
         speed: 0,
       })
+      this.shellEl.classList.add('is-integrity-critical')
+      this.objective.setJob('CRITICAL -- your machine is about to fall')
+      spawnWarningDialog(this.windows, {
+        title: 'WORKSTATION FAILING',
+        message: `Integrity critical. ${this.target.org} is one step from owning this machine. Clear the hostiles and stop taking hits.`,
+        ttlMs: 5000,
+      })
     }
+    if (this.state.integrity > 35) this.shellEl.classList.remove('is-integrity-critical')
 
     // The target pulling the plug on the player's own terminal. Checked
     // before the counter-hack so the two can never fire on the same tick.
@@ -730,7 +749,39 @@ export class Shell {
         // Camera feeds ride the same cadence but land far less often, and
         // get much more likely as you approach building control -- owning
         // the cameras is the payoff of getting physical.
-        const camChance = 0.05 + LAYER_ORDER.indexOf(this.state.layer) * 0.04
+        // Cameras are authored content and a payoff, not clutter -- the
+        // density cut targeted process windows, so cameras keep a healthy
+        // rate rather than becoming something you rarely see.
+        // The two human channels ride the same cadence. Operators escalate
+        // with depth and heat; allies show up to warn you.
+        const depthIdx = LAYER_ORDER.indexOf(this.state.layer)
+        if (this.rng() < 0.16 + depthIdx * 0.03) {
+          spawnOperatorMessage({
+            manager: this.windows,
+            rng: this.rng,
+            org: this.target.org,
+            handle: this.state.handle,
+            tier: Math.min(3, Math.floor(depthIdx / 2) + (this.state.heat > 60 ? 1 : 0)),
+          })
+        } else if (this.rng() < 0.3) {
+          spawnAllyMessage({
+            manager: this.windows,
+            rng: this.rng,
+            org: this.target.org,
+            kind: this.integrity.value < 55 ? 'incoming' : this.rng() < 0.5 ? 'badFiles' : 'route',
+          })
+        }
+
+        // Recovered documents: real files pulled off the target. Silently
+        // no-ops until images exist in public/images/.
+        // Authored content, like the camera clips -- these should actually
+        // be seen, so they get a healthy rate rather than the process
+        // windows' deliberately-thinned one.
+        if (this.rng() < 0.34 + depthIdx * 0.05) {
+          spawnDocWindow(this.windows, this.rng, this.target.org)
+        }
+
+        const camChance = 0.14 + LAYER_ORDER.indexOf(this.state.layer) * 0.06
         if (this.rng() < camChance) {
           spawnCamWindow({
             manager: this.windows,
@@ -754,6 +805,9 @@ export class Shell {
     if (this.reverseHack?.active || this.lockout || this.inFinale) return
 
     store.emit('terminal:line', { text: reverseHackOpener(this.target.org, this.rng), tone: 'danger', speed: 0 })
+    // An ally shouts a beat before it lands, so the warning channel is
+    // genuinely useful rather than decorative.
+    spawnAllyMessage({ manager: this.windows, rng: this.rng, org: this.target.org, kind: 'incoming' })
 
     // Severity rises with depth and with how exposed the player already is,
     // so a weak machine gets hit harder -- the compounding half of the loop.
