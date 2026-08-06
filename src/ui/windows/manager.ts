@@ -150,6 +150,24 @@ export class WindowManager {
    * Director owns, hostiles, threats and modals are the game talking to
    * you -- starving those would be worse than the pile.
    */
+  /**
+   * Live AMBIENT windows: popups the spawner put there.
+   *
+   * Task panels are pinned and the Director owns their count, fixtures
+   * are exempt entirely -- so this is the only number the ambient gate
+   * should be looking at. Counting panels against the same budget meant
+   * panel churn (75 spawns in a 170-second run) kept the shared total at
+   * the ceiling and refused roughly two ambient draws in three.
+   */
+  get ambientCount(): number {
+    let n = 0
+    for (const w of this.windows) {
+      if (w.isModal || w.isFixture || w.isPinned || w.isClosed) continue
+      n += w.span.cols * w.span.rows
+    }
+    return n
+  }
+
   get budgetedCount(): number {
     // Counted in SLOTS, not windows: a spanning window genuinely occupies
     // more of the board, so it has to cost more of the budget or the cap

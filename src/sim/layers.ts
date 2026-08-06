@@ -117,6 +117,13 @@ export interface LayerDef {
    * six layers, so the only thing that changed with depth was how OFTEN
    * popups arrived, never WHAT arrived.
    */
+  /**
+   * Note every layer gives `cam` and `doc` a non-zero weight. The mixes
+   * are meant to differ in emphasis, not to make a kind unreachable:
+   * weighting cameras onto the deep layers only meant a player who never
+   * reached KERNEL saw no camera footage at all, and the media is
+   * authored content people made on purpose.
+   */
   ambientMix: Readonly<Partial<Record<AmbientKind, number>>>
 }
 
@@ -154,7 +161,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'none',
     modifierText: 'open network -- no countermeasures',
     systemKind: 'public net',
-    ambientMix: { news: 4, geo: 3, process: 2, ally: 2, operator: 1 },
+    ambientMix: { news: 4, geo: 3, cam: 3, doc: 2, process: 2, ally: 2, operator: 1 },
   },
   perimeter: {
     id: 'perimeter',
@@ -176,7 +183,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'sealed',
     modifierText: 'nodes arrive SEALED -- click once to break the seal',
     systemKind: 'edge appliance',
-    ambientMix: { process: 5, operator: 3, ally: 2, news: 1, geo: 1 },
+    ambientMix: { process: 5, cam: 4, doc: 3, operator: 3, ally: 2, news: 1, geo: 1 },
   },
   intranet: {
     id: 'intranet',
@@ -198,7 +205,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'decay',
     modifierText: 'idle nodes DECAY -- keep rotating between them',
     systemKind: 'corporate lan',
-    ambientMix: { doc: 6, process: 3, geo: 3, news: 2, ally: 2, operator: 2 },
+    ambientMix: { doc: 7, cam: 4, process: 3, geo: 3, news: 2, ally: 2, operator: 2 },
   },
   core: {
     id: 'core',
@@ -220,7 +227,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'linked',
     modifierText: 'nodes are LINKED -- cracking one advances its twin',
     systemKind: 'data centre',
-    ambientMix: { process: 5, doc: 4, operator: 3, geo: 2, news: 2, cam: 1 },
+    ambientMix: { doc: 6, cam: 5, process: 5, operator: 3, geo: 2, news: 2 },
   },
   kernel: {
     id: 'kernel',
@@ -242,7 +249,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'hunted',
     modifierText: 'you are HUNTED -- traces incoming, block them',
     systemKind: 'bare metal',
-    ambientMix: { process: 6, operator: 4, cam: 2, news: 2, stream: 2, doc: 1 },
+    ambientMix: { process: 6, cam: 5, operator: 4, doc: 3, news: 2, stream: 2 },
   },
   physical: {
     id: 'physical',
@@ -267,7 +274,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'total',
     modifierText: 'FULL LOCKDOWN -- everything at once',
     systemKind: 'the building',
-    ambientMix: { cam: 6, stream: 3, geo: 2, process: 2, operator: 1 },
+    ambientMix: { cam: 8, stream: 4, doc: 3, geo: 2, process: 2, operator: 1 },
   },
 }
 

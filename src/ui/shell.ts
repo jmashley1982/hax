@@ -207,7 +207,7 @@ export class Shell {
       () => this.windows.gridSlots,
     )
     this.windows.onWindowClosed(() => this.budget.noteClosed())
-    this.windows.setCapacityProvider(() => this.budget.capacity)
+    this.windows.setCapacityProvider(() => this.budget.ambientCapacity)
 
     this.terminal = new Terminal(this.desk.rail)
     this.crt = new CrtOverlay(this.shellEl, state.seed)
@@ -263,7 +263,7 @@ export class Shell {
     // Panels get the lion's share of the budget; the remainder is what
     // ambient popups may use. Both are bounded by the same number, so the
     // total on screen cannot run away.
-    this.director.setBudgetProvider(() => Math.max(3, this.budget.capacity - 2))
+    this.director.setBudgetProvider(() => this.budget.panelAllowance)
 
     this.icons = new DesktopIcons(this.desk.bar, {
       manager: this.windows,
@@ -1003,7 +1003,7 @@ export class Shell {
     for (let i = 0; i < draws; i++) {
       // `break`, not `return`: a refused draw means the board is full
       // right now, not that the rest of the burst is invalid.
-      if (!this.budget.canSpawn(this.windows.budgetedCount)) break
+      if (!this.budget.canSpawn(this.windows.ambientCount)) break
       this.spawnAmbient()
     }
   }

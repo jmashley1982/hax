@@ -89,9 +89,33 @@ export function preloadDocs(): void {
   for (const d of DOC_IMAGES) void probeDoc(d)
 }
 
+/**
+ * Documents shown recently, newest last.
+ *
+ * The camera clips got this treatment when nine distinct clips were
+ * reading as "the same one over and over"; the images never did, and it
+ * showed the moment they started appearing at a real rate -- five
+ * document popups in one run drew from exactly two files
+ * (09, 05, 09, 05, 09). Same fix: skip what was just shown until the pool
+ * has cycled.
+ */
+const recentDocs: string[] = []
+const RECENT_LIMIT = 5
+
 /** Any image known to exist, or null if none have landed yet. */
 export function pickAvailableDoc(rand: () => number): DocImage | null {
   const present = DOC_IMAGES.filter((d) => availability.get(d.file) === true)
   if (present.length === 0) return null
-  return present[Math.floor(rand() * present.length)] ?? null
+
+  const fresh = present.filter((d) => !recentDocs.includes(d.file))
+  const pool = fresh.length > 0 ? fresh : present
+  const pick = pool[Math.floor(rand() * pool.length)] ?? null
+  if (!pick) return null
+
+  recentDocs.push(pick.file)
+  // Never suppress the whole pool -- with only two images present, a
+  // limit of five would empty `fresh` on every draw and achieve nothing.
+  const cap = Math.min(RECENT_LIMIT, Math.max(1, present.length - 1))
+  while (recentDocs.length > cap) recentDocs.shift()
+  return pick
 }

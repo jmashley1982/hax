@@ -30,13 +30,52 @@ import type { PlayMode } from '@/core/events'
  * between breathers.
  */
 
+/**
+ * Slots, not windows -- a 1x2 vault-pull panel costs two.
+ *
+ * These were 3-6 and it starved the board of everything that is not a
+ * task panel. Measured over a full 170-second run: 43 panels spawned and
+ * SIX ambient windows total, of which one document and one camera. The
+ * player's report was exact -- "i never saw any images files and the
+ * videos only ever showed up at the very end" -- because the only
+ * cameras that reliably fire are the finale's three staggered ones.
+ */
 const CAPACITY_BY_LAYER: Record<LayerId, number> = {
+  surface: 5,
+  perimeter: 6,
+  intranet: 6,
+  core: 7,
+  kernel: 7,
+  physical: 8,
+}
+
+/**
+ * Slots kept for ambient popups, so task panels cannot eat the board.
+ *
+ * This reserve existed before but was defeated by its own floor: the
+ * Director asked for `max(3, capacity - 2)`, and with capacity at 4 the
+ * floor won and panels took 3 of 4 slots. Add a 1x2 vault panel and
+ * panels alone exceeded capacity, so canSpawn refused every ambient draw
+ * for the rest of the run.
+ */
+export const AMBIENT_RESERVE = 2
+
+/**
+ * How many ambient popups may be alive at once, by depth.
+ *
+ * Deliberately its own number rather than "whatever is left over". The
+ * media -- camera clips and recovered documents -- is authored content
+ * somebody made on purpose, and leftovers meant a whole 170-second run
+ * produced one of each. Popups live 7-15 seconds, so three to five
+ * concurrent is what it takes to actually see them.
+ */
+const AMBIENT_CAPACITY: Record<LayerId, number> = {
   surface: 3,
   perimeter: 4,
   intranet: 4,
-  core: 5,
+  core: 4,
   kernel: 5,
-  physical: 6,
+  physical: 5,
 }
 
 const CAPACITY_BY_MODE: Record<PlayMode, number> = {
@@ -89,6 +128,16 @@ export class BoardBudget {
     return Math.max(3, Math.min(wanted, room))
   }
 
+  /**
+   * How many slots task panels may use. The remainder is the ambient
+   * reserve, and it is a real remainder: the cap can never rise high
+   * enough to leave ambient with nothing.
+   */
+  get panelAllowance(): number {
+    const cap = this.capacity
+    return Math.max(2, Math.min(cap - AMBIENT_RESERVE, cap - 1))
+  }
+
   get clearsToRelease(): number {
     const depth = LAYER_ORDER.indexOf(this.getLayer())
     return 1 + Math.floor(depth / 2) + RELEASE_BY_MODE[this.getMode()]
@@ -102,13 +151,17 @@ export class BoardBudget {
     return this.latched
   }
 
+  get ambientCapacity(): number {
+    return AMBIENT_CAPACITY[this.getLayer()]
+  }
+
   /**
    * May one more ambient window open right now?
    *
-   * @param live how many budgeted windows are currently on the board
+   * @param live how many AMBIENT windows are currently on the board
    */
   canSpawn(live: number): boolean {
-    if (live >= this.capacity) {
+    if (live >= this.ambientCapacity) {
       // Hitting the ceiling latches the gate shut. Note this runs on the
       // *request*, not on the close, so a board that is already over
       // capacity (a burst of priority windows, say) latches on the next
