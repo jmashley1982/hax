@@ -40,6 +40,8 @@ export interface ManhuntOptions {
   handle: string
   /** Seconds on the dispatch clock. */
   etaSeconds: number
+  /** Scrubs needed to lose them. Shown as a counter -- see scrub(). */
+  hopsToLoseThem: number
   line: (text: string, tone: 'warning' | 'danger' | 'success') => void
   /** Survived it -- they lost the thread. */
   onEscaped: () => void
@@ -79,6 +81,8 @@ export class Manhunt {
 
   private doxxRows: HTMLElement[] = []
   private etaEl: HTMLElement | null = null
+  private etaTextEl: HTMLElement | null = null
+  private scrubBtn: HTMLElement | null = null
   private stripEl: HTMLElement | null = null
   private canvas: HTMLCanvasElement | null = null
   /** 1 = they have no idea; 0 = they are at the door. */
@@ -134,11 +138,17 @@ export class Manhunt {
 
     this.etaEl = document.createElement('div')
     this.etaEl.className = 'manhunt__eta'
+    // paintEta() runs every frame, so the countdown gets its own span --
+    // writing textContent on the row itself destroyed the "+4s" float one
+    // frame after it was created, which is why the gain was invisible.
+    this.etaTextEl = document.createElement('span')
+    this.etaEl.appendChild(this.etaTextEl)
 
     const scrub = document.createElement('button')
     scrub.className = 'manhunt__scrub'
-    scrub.textContent = 'SCRUB / REROUTE'
     scrub.addEventListener('click', () => this.scrub())
+    this.scrubBtn = scrub
+    this.paintScrub()
 
     const hint = document.createElement('div')
     hint.className = 'manhunt__hint'
@@ -297,16 +307,49 @@ export class Manhunt {
     })
   }
 
-  private paintEta(): void {
+  /**
+   * The scrub button carries its own progress.
+   *
+   * Reported as "the scrub/reroute button either doesnt work or its not
+   * clear that its done anything" -- and it was the second. The escape
+   * condition was `revealed === 0 && scrubs >= 4` with that counter
+   * displayed NOWHERE, and a press while nothing was revealed changed
+   * literally nothing on screen: identical redacted text repainted, the
+   * map radius unchanged, and a silent +4s on a clock already counting
+   * down. One legible counter replaces the invisible half of the
+   * condition, so every press visibly advances something.
+   */
+  private paintScrub(): void {
+    if (!this.scrubBtn) return
+    const burned = Math.min(this.scrubs, this.opts.hopsToLoseThem)
+    this.scrubBtn.textContent = `SCRUB / REROUTE -- ${burned}/${this.opts.hopsToLoseThem} HOPS BURNED`
+  }
+
+  /** A visible pulse on the row that just gained time. */
+  private flashEta(): void {
     if (!this.etaEl) return
+    this.etaEl.classList.remove('is-gained')
+    void this.etaEl.offsetWidth
+    this.etaEl.classList.add('is-gained')
+    setTimeout(() => this.etaEl?.classList.remove('is-gained'), 700)
+
+    const float = document.createElement('span')
+    float.className = 'manhunt__gain'
+    float.textContent = '+4s'
+    this.etaEl.appendChild(float)
+    setTimeout(() => float.remove(), 900)
+  }
+
+  private paintEta(): void {
+    if (!this.etaEl || !this.etaTextEl) return
     const s = Math.max(0, Math.ceil(this.remainingMs / 1000))
-    this.etaEl.textContent = `LOCAL UNITS DISPATCHED -- ETA ${String(Math.floor(s / 60))}:${String(s % 60).padStart(2, '0')}`
+    this.etaTextEl.textContent = `LOCAL UNITS DISPATCHED -- ETA ${String(Math.floor(s / 60))}:${String(s % 60).padStart(2, '0')}`
     this.etaEl.classList.toggle('is-close', s <= 20)
   }
 
   // -- fighting back ------------------------------------------------------
 
-  /** Manual scrub: buys back one revealed field and a little time. */
+  /** Manual scrub: buys back one revealed field, adds time, burns a hop. */
   scrub(): void {
     if (this.finished) return
     this.scrubs += 1
@@ -314,8 +357,18 @@ export class Manhunt {
     this.revealed = Math.max(0, this.revealed - 1)
     this.searchRadius = Math.max(0.06, 1 - this.revealed / DOXX_FIELDS.length)
     this.paint()
-    this.opts.line('rerouted -- they lost a hop', 'success')
-    if (this.revealed === 0 && this.scrubs >= 4) this.finish(true)
+    this.paintScrub()
+    this.paintEta()
+    this.flashEta()
+    this.scrubBtn?.classList.add('is-hit')
+    setTimeout(() => this.scrubBtn?.classList.remove('is-hit'), 220)
+    this.drawMap()
+    this.opts.line(
+      `rerouted -- they lost a hop (${Math.min(this.scrubs, this.opts.hopsToLoseThem)}/${this.opts.hopsToLoseThem})`,
+      'success',
+    )
+    // One condition, and it is the one on the button.
+    if (this.scrubs >= this.opts.hopsToLoseThem) this.finish(true)
   }
 
   /**

@@ -1365,6 +1365,7 @@ export class Shell {
     // Their ETA is the difficulty knob: CASUAL gives you room to work it
     // out, IRL barely gives you time to react.
     const seconds = this.mode.id === 'casual' ? 95 : this.mode.id === 'leet' ? 70 : 50
+    const hops = this.mode.id === 'casual' ? 3 : this.mode.id === 'leet' ? 4 : 6
 
     this.manhunt = new Manhunt({
       manager: this.windows,
@@ -1373,6 +1374,7 @@ export class Shell {
       org: this.target.org,
       handle: this.state.handle,
       etaSeconds: seconds,
+      hopsToLoseThem: hops,
       line: (text, tone) => store.emit('terminal:line', { text, tone, speed: 0 }),
       onEscaped: () => {
         this.manhunt = null

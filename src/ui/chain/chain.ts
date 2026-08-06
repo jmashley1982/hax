@@ -363,6 +363,7 @@ export class Chain {
     const token = makeToken(rng, this.theme.reward)
     cb.grantToken(token)
     cb.line(`${this.theme.act} COMPLETE -- ${token.label} RECOVERED :: ${token.code}`, 'success')
+    cb.line(`   spend it: click the chip in the HUD, or type ${token.code} and press ENTER`, 'system')
   }
 
   // -- plumbing -----------------------------------------------------------

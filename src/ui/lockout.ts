@@ -96,7 +96,7 @@ export class LockoutOverlay {
     this.keyHandler = (e) => {
       if (e.key === 'Tab' || e.metaKey || e.ctrlKey || e.altKey) return
       e.preventDefault()
-      this.onInput()
+      this.onInput(e.key)
     }
     window.addEventListener('keydown', this.keyHandler, true)
 
@@ -108,7 +108,7 @@ export class LockoutOverlay {
   }
 
   /** Any keypress, or a tap on the stage's own control, advances the current stage. */
-  private onInput(): void {
+  private onInput(key?: string): void {
     switch (this.stage) {
       case 'dead':
         this.runPost()
@@ -120,7 +120,7 @@ export class LockoutOverlay {
         this.mountNextVolume()
         break
       case 'rekey':
-        this.hitRekey(null)
+        this.hitRekey(null, key)
         break
       default:
         break
@@ -280,7 +280,7 @@ export class LockoutOverlay {
     hint.className = 'lockout__hint'
     hint.textContent = isMobileLayout()
       ? 'TAP the glyphs in order to rebuild the key'
-      : 'CLICK the glyphs in order (or press any key) to rebuild the key'
+      : `TYPE the key: ${this.rekeyCode.join(' ')}`
 
     const row = document.createElement('div')
     row.className = 'lockout__rekey'
@@ -297,13 +297,39 @@ export class LockoutOverlay {
   }
 
   /**
-   * Tapping out of order still counts. Requiring the exact next glyph
-   * would turn the one moment the player is already on the back foot into
-   * a precision test -- the ceremony is meant to be tense, not hard.
+   * Rebuild the key.
+   *
+   * On a phone this stays forgiving -- tap any glyph, in any order. There
+   * is no keyboard, the targets are small, and turning the one moment the
+   * player is already on the back foot into a precision test would be
+   * mean rather than tense.
+   *
+   * On desktop you type the code that is on screen, which is what was
+   * asked for. Still not a real test: four glyphs from 0-9A-F, no timer,
+   * and a wrong key costs nothing but a shake -- it just has to be the
+   * right key to advance.
    */
-  private hitRekey(_index: number | null): void {
-    const slot = this.stageEl.querySelector('.lockout__glyph:not(.is-set)') as HTMLElement | null
+  private hitRekey(index: number | null, key?: string): void {
+    const slots = Array.from(this.stageEl.querySelectorAll('.lockout__glyph')) as HTMLElement[]
+    const slot = slots[this.rekeyIndex]
     if (!slot) return
+
+    if (!isMobileLayout() && key !== undefined) {
+      const want = this.rekeyCode[this.rekeyIndex] ?? ''
+      if (key.toUpperCase() !== want.toUpperCase()) {
+        slot.classList.remove('is-wrong')
+        void slot.offsetWidth
+        slot.classList.add('is-wrong')
+        setTimeout(() => slot.classList.remove('is-wrong'), 320)
+        return
+      }
+    }
+    // A click on desktop only counts if it is the glyph actually due --
+    // otherwise clicking any square four times would sidestep the typing.
+    if (!isMobileLayout() && key === undefined && index !== null && index !== this.rekeyIndex) {
+      return
+    }
+
     slot.classList.add('is-set')
     this.rekeyIndex += 1
     if (this.rekeyIndex >= REKEY_SLOTS) this.after(320, () => this.runReconnect())

@@ -161,6 +161,14 @@
   gap: 0.35rem;
   align-items: center;
   flex-wrap: wrap;
+  /*
+   * The HUD is `pointer-events: none` (hud.css) so its meters never eat a
+   * click meant for the board. The token rack lives inside it and is the
+   * one part that MUST be clickable -- without this the chip could not be
+   * clicked at all, and the only way to spend a token you had earned over
+   * three windows was to type its code, which nothing told you.
+   */
+  pointer-events: auto;
 }
 
 .tokens:empty {
@@ -196,6 +204,13 @@
 .token__code {
   font-size: 8px;
   opacity: 0.85;
+}
+
+/* Says out loud that the chip is spendable, and how. */
+.token__how {
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
 }
 
 @keyframes token-arrive {

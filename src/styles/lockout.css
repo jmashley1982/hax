@@ -295,6 +295,26 @@
   cursor: pointer;
 }
 
+/* Wrong key on desktop: costs nothing, but says so. */
+.lockout__glyph.is-wrong {
+  animation: lockout-glyph-wrong 320ms ease-out;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+@keyframes lockout-glyph-wrong {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lockout__glyph.is-wrong { animation: none; }
+}
+
+/* The glyph you are being asked for right now. */
+.lockout__glyph:not(.is-set) + .lockout__glyph:not(.is-set) { opacity: 0.55; }
+
 .lockout__glyph.is-set {
   border-color: #39ff6a;
   color: var(--fw-bright);

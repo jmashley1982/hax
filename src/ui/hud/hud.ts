@@ -164,7 +164,12 @@ export class Hud {
       const code = document.createElement('span')
       code.className = 'token__code'
       code.textContent = token.code
-      chip.append(label, code)
+      // Spell out that it is spendable. A reward you cannot work out how
+      // to use is worse than no reward.
+      const how = document.createElement('span')
+      how.className = 'token__how'
+      how.textContent = 'CLICK OR TYPE IT'
+      chip.append(label, code, how)
       chip.addEventListener('click', () => {
         const taken = this.pouch?.take(token.id)
         if (taken) this.onSpendToken?.(taken)

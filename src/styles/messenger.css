@@ -12,23 +12,51 @@
   left: 12px;
   bottom: 88px;
   z-index: 480;
-  width: 236px;
-  max-height: 40vh;
+  width: 288px;
+  max-height: 42vh;
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--panel) 92%, transparent);
-  border: 1px solid var(--panel-edge);
-  font-size: 10px;
-  line-height: 1.45;
+  /*
+   * OPAQUE, and bigger than the thing it sits on.
+   *
+   * .terminal is a left strip at 11px / opacity .42, and this was docked
+   * on top of it at 236px wide, 10px type, with a semi-transparent
+   * background -- so the terminal scrolled visibly through it and the
+   * panel was in SMALLER type than the noise it was covering. It read as
+   * more terminal texture, which is why it went unnoticed, and it was
+   * genuinely illegible. Nothing shows through it now.
+   */
+  background: var(--panel);
+  border: 1px solid var(--fg-dim);
+  box-shadow: 0 4px 18px -6px #000;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
+/* Reads as a window title bar, not as a line of background text. */
 .msgr__head {
-  padding: 4px 7px;
-  border-bottom: 1px solid var(--panel-edge);
-  font-size: 9px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 8px;
+  background: var(--panel-edge);
+  border-bottom: 1px solid var(--fg-dim);
+  font-size: 10px;
   letter-spacing: 0.16em;
-  color: var(--fg-dim);
+  color: var(--fg-bright);
 }
+
+/* Unread count -- announces an arrival once instead of relying on the
+   player happening to look. Deliberately NOT a whole-panel pulse: that
+   treatment is reserved for offers, which is what makes an offer land. */
+.msgr__unread {
+  background: var(--accent-2);
+  color: var(--bg-deep);
+  font-size: 9px;
+  padding: 1px 5px;
+}
+
+.msgr__unread:empty { display: none; }
 
 .msgr__roster {
   display: flex;
@@ -42,7 +70,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: 11px;
   color: var(--fg-dim);
   opacity: 0.4;
 }
@@ -68,8 +96,19 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 5px 7px;
+  padding: 6px 8px;
   color: var(--fg);
+}
+
+/* Brief highlight on the newest line so an arrival is visible in
+   peripheral vision without shouting. */
+.msgr__line.is-new {
+  animation: msgr-arrive 1.6s ease-out;
+}
+
+@keyframes msgr-arrive {
+  0% { background: color-mix(in srgb, var(--accent-2) 45%, transparent); }
+  100% { background: transparent; }
 }
 
 .msgr__line {
@@ -80,8 +119,8 @@
 .msgr__line--join,
 .msgr__line--part {
   color: var(--fg-dim);
-  opacity: 0.7;
-  font-size: 9px;
+  opacity: 0.75;
+  font-size: 10px;
 }
 
 .msgr__who {
@@ -298,6 +337,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .msgr.is-critical,
+  .msgr__line.is-new,
   .shell.is-manhunt::after,
   .manhunt__eta.is-close { animation: none; }
 }
@@ -318,4 +358,31 @@
 [data-layout='mobile'] .manhunt__canvas {
   width: 100%;
   height: auto;
+}
+
+/* A scrub has to land visibly, every time -- including when nothing is
+   revealed yet and the doxx rows cannot change. */
+.manhunt__scrub.is-hit {
+  background: var(--ok);
+  color: var(--bg-deep);
+}
+
+.manhunt__eta.is-gained {
+  color: var(--ok);
+}
+
+.manhunt__gain {
+  margin-left: 0.5rem;
+  color: var(--ok);
+  animation: manhunt-gain 900ms ease-out forwards;
+}
+
+@keyframes manhunt-gain {
+  0% { opacity: 0; transform: translateY(4px); }
+  25% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manhunt__gain { animation: none; }
 }

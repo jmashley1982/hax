@@ -88,6 +88,8 @@ export class Messenger {
   private rosterEl: HTMLElement
   private logEl: HTMLElement
   private offerEl: HTMLElement
+  private unreadEl!: HTMLElement
+  private unread = 0
   private buddies: Buddy[]
   private offer: Offer | null = null
   private offerAgeMs = 0
@@ -108,7 +110,11 @@ export class Messenger {
 
     const head = document.createElement('div')
     head.className = 'msgr__head'
-    head.textContent = 'RELAY :: CONTACTS'
+    const headLabel = document.createElement('span')
+    headLabel.textContent = 'RELAY :: CONTACTS'
+    this.unreadEl = document.createElement('span')
+    this.unreadEl.className = 'msgr__unread'
+    head.append(headLabel, this.unreadEl)
 
     this.rosterEl = document.createElement('div')
     this.rosterEl.className = 'msgr__roster'
@@ -120,6 +126,8 @@ export class Messenger {
     this.offerEl.className = 'msgr__offer'
 
     this.el.append(head, this.rosterEl, this.logEl, this.offerEl)
+    this.el.addEventListener('pointerenter', this.markRead)
+    this.el.addEventListener('pointerdown', this.markRead)
     mount.appendChild(this.el)
 
     this.paintRoster()
@@ -218,9 +226,24 @@ export class Messenger {
     } else {
       row.textContent = kind === 'join' ? `-- ${from} is online` : `-- ${from} went dark`
     }
+    // Highlight the newest line briefly and bump the unread pip, so an
+    // arrival registers in peripheral vision. Nothing pulses the whole
+    // panel -- that stays reserved for offers, which is what makes an
+    // offer mean something.
+    row.classList.add('is-new')
+    setTimeout(() => row.classList.remove('is-new'), 1700)
+    this.unread += 1
+    this.unreadEl.textContent = String(this.unread)
+
     this.logEl.appendChild(row)
     while (this.logEl.children.length > 14) this.logEl.firstElementChild?.remove()
     this.logEl.scrollTop = this.logEl.scrollHeight
+  }
+
+  /** Clear the pip once the player has plainly looked at it. */
+  private markRead = (): void => {
+    this.unread = 0
+    this.unreadEl.textContent = ''
   }
 
   /**
