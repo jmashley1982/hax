@@ -1,3 +1,4 @@
+import type { Rng } from '@/core/rng'
 import type { GameState, LayerId } from '@/core/state'
 import { LAYER_ORDER } from '@/core/state'
 
@@ -36,6 +37,49 @@ export interface LayerPalette {
   panelEdge: string
 }
 
+/**
+ * What a depth *is*, in-fiction. Named in the top bar and on the
+ * breakthrough card, and it drives which ambient popups belong there.
+ */
+export type SystemKind =
+  | 'public net'
+  | 'edge appliance'
+  | 'corporate lan'
+  | 'data centre'
+  | 'bare metal'
+  | 'the building'
+
+/** Every kind of ambient popup. */
+export type AmbientKind =
+  | 'process'
+  | 'doc'
+  | 'cam'
+  | 'operator'
+  | 'ally'
+  | 'news'
+  | 'geo'
+  | 'stream'
+
+/**
+ * Canonical iteration order for the weighted picker.
+ *
+ * NEVER reorder this, and never iterate an ambientMix with
+ * Object.entries(): object key order would make the draw depend on the
+ * order the layer literals happen to declare their weights, which would
+ * silently break `?seed=` reproducibility -- and deterministic replay is
+ * the whole premise of the film-prop half of this project.
+ */
+export const AMBIENT_KINDS: readonly AmbientKind[] = [
+  'process',
+  'doc',
+  'cam',
+  'operator',
+  'ally',
+  'news',
+  'geo',
+  'stream',
+]
+
 export interface LayerDef {
   id: LayerId
   title: string
@@ -62,6 +106,18 @@ export interface LayerDef {
   modifier: LayerModifier
   /** One-line description of the modifier, announced on arrival. */
   modifierText: string
+  /** What kind of system this depth is. */
+  systemKind: SystemKind
+  /**
+   * Relative weight per ambient popup kind; a missing key means zero.
+   *
+   * This is what stops every depth reading as "the same but more". The
+   * spawner used to choose the kind from one hardcoded rng roll with
+   * fixed thresholds -- process 34%, camera 28%, document 16% -- for all
+   * six layers, so the only thing that changed with depth was how OFTEN
+   * popups arrived, never WHAT arrived.
+   */
+  ambientMix: Readonly<Partial<Record<AmbientKind, number>>>
 }
 
 export type LayerModifier =
@@ -97,6 +153,8 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     sizeBias: 0,
     modifier: 'none',
     modifierText: 'open network -- no countermeasures',
+    systemKind: 'public net',
+    ambientMix: { news: 4, geo: 3, process: 2, ally: 2, operator: 1 },
   },
   perimeter: {
     id: 'perimeter',
@@ -117,6 +175,8 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     sizeBias: 0.2,
     modifier: 'sealed',
     modifierText: 'nodes arrive SEALED -- click once to break the seal',
+    systemKind: 'edge appliance',
+    ambientMix: { process: 5, operator: 3, ally: 2, news: 1, geo: 1 },
   },
   intranet: {
     id: 'intranet',
@@ -137,6 +197,8 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     sizeBias: 0.4,
     modifier: 'decay',
     modifierText: 'idle nodes DECAY -- keep rotating between them',
+    systemKind: 'corporate lan',
+    ambientMix: { doc: 6, process: 3, ally: 2, operator: 2 },
   },
   core: {
     id: 'core',
@@ -157,6 +219,8 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     sizeBias: 0.6,
     modifier: 'linked',
     modifierText: 'nodes are LINKED -- cracking one advances its twin',
+    systemKind: 'data centre',
+    ambientMix: { process: 5, doc: 4, operator: 3, cam: 1 },
   },
   kernel: {
     id: 'kernel',
@@ -177,6 +241,8 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     sizeBias: 0.8,
     modifier: 'hunted',
     modifierText: 'you are HUNTED -- traces incoming, block them',
+    systemKind: 'bare metal',
+    ambientMix: { process: 6, operator: 4, cam: 2, doc: 1 },
   },
   physical: {
     id: 'physical',
@@ -200,6 +266,8 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     sizeBias: 1,
     modifier: 'total',
     modifierText: 'FULL LOCKDOWN -- everything at once',
+    systemKind: 'the building',
+    ambientMix: { cam: 6, stream: 3, geo: 2, process: 2, operator: 1 },
   },
 }
 
@@ -211,6 +279,25 @@ export function unlockedPanelTypes(layer: LayerId): string[] {
     if (id === layer) break
   }
   return out
+}
+
+/**
+ * Draw an ambient popup kind from a layer's mix.
+ *
+ * Walks the frozen AMBIENT_KINDS array rather than the mix object's own
+ * keys, so the sequence of rng draws is identical regardless of the order
+ * a layer literal happens to list its weights. See AMBIENT_KINDS.
+ */
+export function pickAmbientKind(def: LayerDef, rng: Rng): AmbientKind {
+  let total = 0
+  for (const k of AMBIENT_KINDS) total += def.ambientMix[k] ?? 0
+  if (total <= 0) return 'process'
+  let roll = rng() * total
+  for (const k of AMBIENT_KINDS) {
+    roll -= def.ambientMix[k] ?? 0
+    if (roll <= 0) return k
+  }
+  return 'process'
 }
 
 export function layerDef(id: LayerId): LayerDef {

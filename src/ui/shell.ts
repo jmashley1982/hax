@@ -44,6 +44,7 @@ import { PANEL_LABELS } from './panels/registry'
 import { ThreatPanel } from './panels/threatPanel'
 import { TargetSitePanel } from './panels/targetSite'
 import { applyLayerPalette, applyLayerSkin, brandLayerPalettes } from '@/themes/themes'
+import { pickAmbientKind } from '@/sim/layers'
 import { Chain } from './chain/chain'
 import { Messenger, type Offer } from './messenger'
 import { Manhunt } from './manhunt'
@@ -228,6 +229,7 @@ export class Shell {
       () => this.layers.tension,
       this.pouch,
       (token) => this.spendToken(token),
+      () => this.layers.current.systemKind,
     )
     this.objective = new ObjectiveBar(this.desk.top)
 
@@ -968,21 +970,36 @@ export class Shell {
 
     const draws = burstSize(this.state.layer, this.rng)
     for (let i = 0; i < draws; i++) {
-      if (!this.budget.canSpawn(this.windows.budgetedCount)) return
+      // `break`, not `return`: a refused draw means the board is full
+      // right now, not that the rest of the burst is invalid.
+      if (!this.budget.canSpawn(this.windows.budgetedCount)) break
       this.spawnAmbient()
     }
   }
 
   /** One ambient window, kind chosen by depth. */
+  /**
+   * One ambient window, its kind drawn from the CURRENT LAYER'S MIX.
+   *
+   * This used to be a single hardcoded rng roll with fixed thresholds --
+   * process 34%, camera 28%, document 16%, operator 12%, ally 10% --
+   * identical at every depth. The only thing that changed as you
+   * descended was how often popups arrived, never what arrived, which is
+   * precisely why "each level of hacking" read as the same place with
+   * bigger numbers. Now surface leans news and location intel because it
+   * is the public internet, intranet leans documents because it is a
+   * corporate LAN, and physical leans cameras and streams because you are
+   * in the building.
+   */
   private spawnAmbient(): void {
     const depthIdx = LAYER_ORDER.indexOf(this.state.layer)
-    const roll = this.rng()
+    const kind = pickAmbientKind(this.layers.current, this.rng)
 
-    if (roll < 0.34) {
+    if (kind === 'process') {
       spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
       return
     }
-    if (roll < 0.62) {
+    if (kind === 'cam' || kind === 'stream') {
       spawnCamWindow({
         manager: this.windows,
         rng: this.rng,
@@ -995,7 +1012,7 @@ export class Shell {
       })
       return
     }
-    if (roll < 0.78) {
+    if (kind === 'doc') {
       // Returns false when no image has landed yet; fall back rather than
       // silently wasting the draw.
       if (!spawnDocWindow(this.windows, this.rng, this.target.org)) {
@@ -1003,7 +1020,13 @@ export class Shell {
       }
       return
     }
-    if (roll < 0.9) {
+    if (kind === 'news' || kind === 'geo') {
+      // Not built yet -- see plan §19D. Falls back rather than producing
+      // nothing, so a weighted draw is never silently wasted.
+      spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
+      return
+    }
+    if (kind === 'operator') {
       spawnOperatorMessage({
         manager: this.windows,
         rng: this.rng,
@@ -1764,7 +1787,10 @@ export class Shell {
 
     const title = document.createElement('div')
     title.className = 'breakthrough-card__title'
-    title.textContent = next.title
+    // "INTRANET -- CORPORATE LAN": the breakthrough announces what kind of
+    // system you just dropped into, which is the thing that actually
+    // changes about the board.
+    title.textContent = `${next.title} -- ${next.systemKind.toUpperCase()}`
 
     const pips = document.createElement('div')
     pips.className = 'breakthrough-card__pips'

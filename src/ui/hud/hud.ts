@@ -28,6 +28,7 @@ export class Hud {
     /** Earned skeleton keys / trojan bypasses. Clicking a chip spends it. */
     private pouch?: TokenPouch,
     private onSpendToken?: (token: Token) => void,
+    private getSystemKind?: () => string,
   ) {
     this.el = document.createElement('div')
     this.el.className = 'hud'
@@ -127,7 +128,13 @@ export class Hud {
     this.integrityFill.classList.toggle('is-critical', integrity <= 25)
 
     this.scoreValue.textContent = String(Math.floor(this.state.score)).padStart(5, '0')
-    this.layerValue.textContent = this.state.layer.toUpperCase()
+    // Naming what KIND of system this depth is, not just its index. The
+    // layer name alone ("INTRANET") is a label; "INTRANET / CORPORATE LAN"
+    // says why the board looks different down here.
+    const kind = this.getSystemKind?.()
+    this.layerValue.textContent = kind
+      ? `${this.state.layer.toUpperCase()} / ${kind.toUpperCase()}`
+      : this.state.layer.toUpperCase()
 
     const breachPct = Math.min(100, Math.round(this.getTension() * 100))
     this.breachFill.style.width = `${breachPct}%`
