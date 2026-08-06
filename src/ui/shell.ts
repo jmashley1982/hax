@@ -35,6 +35,7 @@ import { spawnAllyMessage, spawnOperatorMessage } from './windows/messageWindow'
 import { preloadAvailability } from '@/media/videoRegistry'
 import { preloadDocs } from '@/media/imageRegistry'
 import { spawnDocWindow } from './windows/docWindow'
+import { spawnFacilityWindow, spawnNewsWindow } from './windows/intelWindow'
 import { TouchInput } from './touch'
 import { isMobileLayout } from '@/core/device'
 import { isInteracting, resetInteraction } from '@/core/interaction'
@@ -1033,7 +1034,10 @@ export class Shell {
       spawnCamWindow({
         manager: this.windows,
         rng: this.rng,
-        labelPrefix: this.target.org.toUpperCase(),
+        // Same feed, different framing: a hijacked camera at depth, a
+        // public stream somebody happens to be broadcasting up top.
+        frame: kind === 'stream' ? 'livestream' : 'security',
+        labelPrefix: kind === 'stream' ? undefined : this.target.org.toUpperCase(),
         // Everything except 'webcam', which is reserved for the reverse
         // hack ("they're watching YOU"). Naming one narrow kind here --
         // doorcam has exactly two clips -- handed a quarter of all camera
@@ -1050,10 +1054,19 @@ export class Shell {
       }
       return
     }
-    if (kind === 'news' || kind === 'geo') {
-      // Not built yet -- see plan §19D. Falls back rather than producing
-      // nothing, so a weighted draw is never silently wasted.
-      spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
+    if (kind === 'news') {
+      spawnNewsWindow({
+        manager: this.windows,
+        rng: this.rng,
+        content: this.content,
+        contract: this.contract,
+        // Once you are in the building, the break itself is the story.
+        breaking: depthIdx >= 4,
+      })
+      return
+    }
+    if (kind === 'geo') {
+      spawnFacilityWindow({ manager: this.windows, rng: this.rng, contract: this.contract })
       return
     }
     if (kind === 'operator') {

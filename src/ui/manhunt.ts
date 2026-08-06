@@ -1,4 +1,5 @@
 import { int, pick, hex, type Rng } from '@/core/rng'
+import { drawStreetGrid, makeStreetGrid, type StreetGrid } from '@/media/streetMap'
 import type { WindowManager } from './windows/manager'
 import type { Win } from './windows/window'
 
@@ -202,23 +203,10 @@ export class Manhunt {
     const { width: W, height: H } = c
     const rng = this.opts.rng
 
-    ctx.fillStyle = '#0a0c10'
-    ctx.fillRect(0, 0, W, H)
-
-    // Streets. Seeded off the same rng stream, so they are stable for a
-    // given session but different between them.
-    if (!this.streets) {
-      this.streets = []
-      for (let i = 0; i < 7; i++) this.streets.push({ v: true, p: int(rng, 8, W - 8), w: rng() < 0.25 ? 2 : 1 })
-      for (let i = 0; i < 5; i++) this.streets.push({ v: false, p: int(rng, 8, H - 8), w: rng() < 0.25 ? 2 : 1 })
-    }
-    ctx.strokeStyle = 'rgba(120,150,170,0.5)'
-    for (const s of this.streets) {
-      ctx.lineWidth = s.w
-      ctx.beginPath()
-      if (s.v) { ctx.moveTo(s.p, 0); ctx.lineTo(s.p, H) } else { ctx.moveTo(0, s.p); ctx.lineTo(W, s.p) }
-      ctx.stroke()
-    }
+    // Generated once, drawn every frame -- see media/streetMap.ts for why
+    // those are two calls rather than one.
+    this.grid ??= makeStreetGrid(rng, W, H)
+    drawStreetGrid(ctx, this.grid, W, H)
 
     const cx = W * 0.56
     const cy = H * 0.48
@@ -253,7 +241,7 @@ export class Manhunt {
     ctx.fillText(`CONFIDENCE ${Math.round((1 - this.searchRadius) * 100)}%`, 6, H - 7)
   }
 
-  private streets: Array<{ v: boolean; p: number; w: number }> | null = null
+  private grid: StreetGrid | null = null
 
   // -- the clock ----------------------------------------------------------
 

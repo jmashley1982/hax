@@ -11,6 +11,7 @@ import { exploit } from './banks/exploit'
 import { dialogue } from './banks/dialogue'
 import { physical } from './banks/physical'
 import { shell } from './banks/shell'
+import { news } from './banks/news'
 
 export type { MissionFacts } from './grammar'
 
@@ -33,6 +34,7 @@ export function buildBankRegistry(): BankRegistry {
   registry.register('dialogue', dialogue)
   registry.register('physical', physical)
   registry.register('shell', shell)
+  registry.register('news', news)
   return registry
 }
 

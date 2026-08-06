@@ -198,7 +198,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'decay',
     modifierText: 'idle nodes DECAY -- keep rotating between them',
     systemKind: 'corporate lan',
-    ambientMix: { doc: 6, process: 3, ally: 2, operator: 2 },
+    ambientMix: { doc: 6, process: 3, geo: 3, news: 2, ally: 2, operator: 2 },
   },
   core: {
     id: 'core',
@@ -220,7 +220,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'linked',
     modifierText: 'nodes are LINKED -- cracking one advances its twin',
     systemKind: 'data centre',
-    ambientMix: { process: 5, doc: 4, operator: 3, cam: 1 },
+    ambientMix: { process: 5, doc: 4, operator: 3, geo: 2, news: 2, cam: 1 },
   },
   kernel: {
     id: 'kernel',
@@ -242,7 +242,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'hunted',
     modifierText: 'you are HUNTED -- traces incoming, block them',
     systemKind: 'bare metal',
-    ambientMix: { process: 6, operator: 4, cam: 2, doc: 1 },
+    ambientMix: { process: 6, operator: 4, cam: 2, news: 2, stream: 2, doc: 1 },
   },
   physical: {
     id: 'physical',
