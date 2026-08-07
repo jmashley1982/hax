@@ -84,6 +84,20 @@ export interface SessionOutcome {
   /** How intact the workstation was at the end -- feeds the debrief grade. */
   integrityLeft: number
   elapsedMs: number
+  /**
+   * Extremes and tallies the achievement checks need.
+   *
+   * Carried on the outcome rather than recomputed later because they are
+   * facts about the RUN, and the run is gone by the time the debrief asks:
+   * peak heat and lowest integrity are gone the moment they decay back,
+   * and "how many gates did you beat" is not derivable from a final state
+   * at all.
+   */
+  peakHeat: number
+  lowestIntegrity: number
+  gatesCleared: number
+  allyKeysUsed: number
+  levelsCleared: number
 }
 
 /**
@@ -230,6 +244,19 @@ export class Shell {
    * reward for reading the messenger, it is a change to how the gate works.
    */
   private tipRolled = new Set<number>()
+  /**
+   * Run tallies for the achievement checks.
+   *
+   * Sampled in onTick rather than hooked into HeatSystem/IntegritySystem:
+   * both already emit edge-triggered threshold events and adding a second
+   * subscriber for a high-water mark would put the same number in two
+   * places. A max over the tick is the same value with no coupling.
+   */
+  private peakHeat = 0
+  private lowestIntegrity = 100
+  private gatesCleared = 0
+  private allyKeysUsed = 0
+  private levelsCleared = 0
   /** The film-prop controls: chrome hiding, pacing, cued beats, autopilot. */
   private film!: FilmMode
   private autopilot!: Autopilot
@@ -646,6 +673,9 @@ export class Shell {
       knownCode: kind === 'password' ? this.tippedCode : null,
       knownFrom: kind === 'password' ? this.tippedFrom : null,
       line: (text, tone) => store.emit('terminal:line', { text, tone, speed: 0 }),
+      onKeyUsed: () => {
+        this.allyKeysUsed += 1
+      },
       onResolve: (ok) => this.resolveGate(ok),
     })
   }
@@ -664,6 +694,7 @@ export class Shell {
     // leftover shortcut would make the level's second gate free.
     this.clearTipOff()
     if (ok) {
+      this.gatesCleared += 1
       this.integrity.repair(INTEGRITY_GAIN.waveRepelled)
       this.heat.add(-12)
       awardScore(this.state, 200)
@@ -705,7 +736,14 @@ export class Shell {
     }
     this.findLog?.paint()
     this.paintLevelObjective()
-    if (run.complete) this.handleThresholdCrossed()
+    if (run.complete) {
+      // Counted here rather than off the layer, because a level completed
+      // by its OBJECTIVE is the thing being rewarded -- an F10 cue or the
+      // old threshold both change the layer without anyone finishing
+      // anything, and CLEAN SWEEP has to mean six objectives.
+      this.levelsCleared += 1
+      this.handleThresholdCrossed()
+    }
   }
 
 
@@ -820,6 +858,11 @@ export class Shell {
       scoreEarned: Math.max(0, Math.floor(this.state.score - this.scoreAtStart)),
       integrityLeft: this.state.integrity,
       elapsedMs: this.elapsedMs,
+      peakHeat: this.peakHeat,
+      lowestIntegrity: this.lowestIntegrity,
+      gatesCleared: this.gatesCleared,
+      allyKeysUsed: this.allyKeysUsed,
+      levelsCleared: this.levelsCleared,
     })
   }
 
@@ -1342,6 +1385,8 @@ export class Shell {
     // much they have noticed you. Driven from the same number the meter
     // paints, so it can never disagree with what is on screen.
     audio.setHeat(this.state.heat)
+    if (this.state.heat > this.peakHeat) this.peakHeat = this.state.heat
+    if (this.state.integrity < this.lowestIntegrity) this.lowestIntegrity = this.state.integrity
 
     const heatEvents = this.heat.tick(dt)
     if (heatEvents.warn) {

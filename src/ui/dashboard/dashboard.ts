@@ -1,3 +1,4 @@
+import { ACHIEVEMENTS, unlockedAchievements } from '@/sim/achievements'
 import { saveState, type GameState } from '@/core/state'
 import { cycleTheme } from '@/themes/themes'
 import { generateContracts, sectorLabel, type Contract } from '@/sim/contracts'
@@ -147,6 +148,11 @@ export class Dashboard {
       statLine('CONTRACTS RUN', String(this.state.contractsRun)),
       statLine('DEEPEST LAYER', this.state.deepestLayer.toUpperCase()),
       statLine('INTEGRITY', `${Math.round(this.state.integrity)}%`),
+      // One line rather than a box. An unlock you only ever see once, on a
+      // debrief that gets dismissed, is half a feature -- but the left
+      // column has no room for a fifth box, so the collection lives as a
+      // count here and the debrief keeps naming them as they land.
+      statLine('UNLOCKS', `${unlockedAchievements(this.state).length} / ${ACHIEVEMENTS.length}`),
     )
 
     box.append(row, stats)

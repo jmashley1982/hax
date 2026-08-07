@@ -173,6 +173,20 @@ export function applySavedCareer(state: GameState): void {
   // for a shoot should still be set up when the machine is switched on
   // tomorrow, which is the entire point of persisting it.
   if (typeof saved.filmMode === 'boolean') state.filmMode = saved.filmMode
+  // Unlocks are career state, not run state. Without this they are written
+  // on every debrief and never read back, so a reload re-announces the
+  // entire collection as brand new -- measured: six "UNLOCKED" rows on a
+  // second run that had earned nothing.
+  //
+  // Filtered to strings only, deliberately NOT validated against the
+  // achievement list: sim/achievements.ts already imports from this file,
+  // so importing the ids back would make a cycle, and an unrecognised id is
+  // harmless anyway -- every reader (unlockedAchievements, the dashboard
+  // count) derives from the canonical ACHIEVEMENTS list, so a stray id
+  // renders nothing rather than a blank row.
+  if (Array.isArray(saved.achievements)) {
+    state.achievements = saved.achievements.filter((id) => typeof id === 'string')
+  }
 }
 
 export function clearSavedState(): void {

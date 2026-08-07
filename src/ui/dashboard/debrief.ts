@@ -3,7 +3,8 @@ import { sectorLabel } from '@/sim/contracts'
 import type { SessionOutcome } from '@/ui/shell'
 import type { PlayMode } from '@/core/events'
 import { initialsFrom, normalise, qualifies, submitScore } from '@/core/highScores'
-import type { GameState } from '@/core/state'
+import { saveState, type GameState } from '@/core/state'
+import { awardAchievements } from '@/sim/achievements'
 
 /**
  * The post-contract results screen.
@@ -146,6 +147,46 @@ export class Debrief {
           at: Date.now(),
         }),
       )
+    }
+
+    // Unlocks last, under everything else. Awarded AFTER the wall check, so
+    // ON THE WALL can read whether this run actually made it -- and awarded
+    // here rather than in the Shell because the payout and the wall are
+    // computed on this screen, not during the run.
+    const fresh = awardAchievements(opts.state, {
+      kind: outcome.kind,
+      deepestLayer: outcome.deepestLayer,
+      integrityLeft,
+      elapsedMs,
+      peakHeat: outcome.peakHeat,
+      lowestIntegrity: outcome.lowestIntegrity,
+      gatesCleared: outcome.gatesCleared,
+      allyKeysUsed: outcome.allyKeysUsed,
+      levelsCleared: outcome.levelsCleared,
+      tier: contract.tier,
+      madeTheWall: qualifies(mode, payout),
+    })
+    if (fresh.length > 0) {
+      saveState(opts.state)
+      const wrap = document.createElement('div')
+      wrap.className = 'debrief__unlocks'
+      const label = document.createElement('div')
+      label.className = 'debrief__unlocks-label'
+      label.textContent = fresh.length === 1 ? 'UNLOCKED' : `UNLOCKED x${fresh.length}`
+      wrap.appendChild(label)
+      for (const a of fresh) {
+        const row = document.createElement('div')
+        row.className = 'debrief__unlock'
+        const name = document.createElement('span')
+        name.className = 'debrief__unlock-name'
+        name.textContent = a.name
+        const note = document.createElement('span')
+        note.className = 'debrief__unlock-note'
+        note.textContent = a.note
+        row.append(name, note)
+        wrap.appendChild(row)
+      }
+      box.appendChild(wrap)
     }
 
     box.append(btn)

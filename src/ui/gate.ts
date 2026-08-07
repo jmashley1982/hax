@@ -52,6 +52,8 @@ export interface GateOptions {
   /** Who handed it over. Named on the shortcut so the credit is theirs. */
   knownFrom?: string | null
   line: (text: string, tone: LineTone) => void
+  /** The ally shortcut was actually taken (not merely offered). */
+  onKeyUsed?: () => void
   onResolve: (ok: boolean) => void
 }
 
@@ -215,6 +217,7 @@ export class Gate {
       use.addEventListener('click', () => {
         if (this.done) return
         this.opts.line(`>> replayed ${from ?? 'a contact'}'s credential -- straight through`, 'success')
+        this.opts.onKeyUsed?.()
         this.finish(true)
       })
       body.appendChild(use)
