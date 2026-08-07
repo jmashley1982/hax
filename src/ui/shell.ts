@@ -407,8 +407,17 @@ export class Shell {
     this.findLog = new FindLog(this.windows, this.levelRun)
     // The board has to actually offer the tool the level asks for.
     this.director.setPreferredTypes(spec.tools)
+    // LOCATE hides the CONTRACT's objective file in the navigator, so the
+    // thing you are flying around looking for is the thing the job named
+    // in its brief -- not a filename invented for the level.
+    this.director.setFindTarget(spec.kind === 'locate' ? this.contract.job.artifact : null)
     store.emit('terminal:line', { text: spec.brief(this.contract.facts), tone: 'success', speed: 2 })
     this.paintLevelObjective()
+    // A gate at `atFound: 0` is an OPENING gate -- they noticed you the
+    // moment you arrived. Milestones only fire on an increment, so without
+    // this such a gate could never happen, and a level whose objective is a
+    // single find (LOCATE) has no milestone to hang one on at all.
+    this.maybeOpenGate()
   }
 
   /** Drop a live gate without resolving it -- the board it guarded is gone. */
@@ -423,6 +432,7 @@ export class Shell {
     this.findLog = null
     this.levelRun = null
     this.director.setPreferredTypes([])
+    this.director.setFindTarget(null)
   }
 
   private paintLevelObjective(): void {

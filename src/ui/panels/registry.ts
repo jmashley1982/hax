@@ -9,6 +9,7 @@ import { KeyRecoveryPanel } from './keyRecovery'
 import { TraceDefensePanel } from './traceDefense'
 import { SignalAlignPanel } from './signalAlign'
 import { DragExfilPanel } from './dragExfil'
+import { FileSystem3dPanel } from './fileSystem3d'
 
 export type PanelFactory = (manager: WindowManager, ctx: PanelContext) => TaskPanel
 
@@ -28,6 +29,7 @@ export const PANEL_TYPES: Record<string, PanelFactory> = {
   traceDefense: (m, c) => new TraceDefensePanel(m, c),
   signalAlign: (m, c) => new SignalAlignPanel(m, c),
   dragExfil: (m, c) => new DragExfilPanel(m, c),
+  fs3d: (m, c) => new FileSystem3dPanel(m, c),
 }
 
 /** Human-readable names, used to announce unlocks at a breakthrough. */
@@ -41,6 +43,7 @@ export const PANEL_LABELS: Record<string, string> = {
   traceDefense: 'TRACE DEFENSE',
   signalAlign: 'SIGNAL LOCK',
   dragExfil: 'VAULT PULL',
+  fs3d: 'FILE SYSTEM NAVIGATOR',
 }
 
 /**

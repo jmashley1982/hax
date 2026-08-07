@@ -53,6 +53,17 @@ export interface PanelContext {
   onCorrupted?: (panelId: string) => void
   /** Fired when a file is shredded off the remote share -- fills the desktop trash. */
   onPurged?: (file: { name: string; corrupted: boolean }) => void
+
+  /**
+   * The filename the current level wants located, for the 3D navigator.
+   *
+   * Separate from `artifact` on purpose: that one is the CONTRACT's
+   * objective file and is handed to exactly one vault-pull panel, while
+   * this is the LEVEL's and every navigator built during that level needs
+   * it -- they are different lifetimes and conflating them is how the
+   * artifact leak happened in the first place.
+   */
+  findTarget?: string | null
 }
 
 export abstract class TaskPanel {
@@ -67,7 +78,7 @@ export abstract class TaskPanel {
   private progressRail: HTMLElement
   private progressFill: HTMLElement
   private titleBase: string
-  private ctx: PanelContext
+  protected ctx: PanelContext
   private progress01 = 0
   private sealed = false
   private sealEl: HTMLElement | null = null

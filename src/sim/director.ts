@@ -63,6 +63,20 @@ export class Director {
     this.pendingArtifact = name
   }
 
+  /**
+   * The file the current level wants located.
+   *
+   * Unlike the artifact this is NOT consumed on first use: every navigator
+   * built during the level hides the same file, because the level's
+   * objective is that one file and a second navigator showing a different
+   * one would be incoherent.
+   */
+  private findTarget: string | null = null
+
+  setFindTarget(name: string | null): void {
+    this.findTarget = name
+  }
+
   get activePanels(): readonly TaskPanel[] {
     return this.panels
   }
@@ -171,6 +185,7 @@ export class Director {
       onArtifactSecured: this.hooks.onArtifactSecured,
       onCorrupted: this.hooks.onCorrupted,
       onPurged: this.hooks.onPurged,
+      findTarget: this.findTarget,
       // Size/complexity comes from depth first, tension second -- so deep
       // panels are visibly denser than shallow ones regardless of timing.
       intensity: Math.min(1, this.layers.current.sizeBias * 0.7 + this.layers.tension * 0.3),

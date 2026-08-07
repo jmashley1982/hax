@@ -92,6 +92,22 @@ const LEVEL_SPECS: Partial<Record<LayerId, LevelSpec>> = {
     brief: () =>
       '>> LEVEL 2 :: trace a route to bank a fragment, then feed it to a CIPHER LOCK. three segments opens the gateway.',
   },
+  intranet: {
+    kind: 'locate',
+    tools: ['fs3d'],
+    target: 1,
+    unit: 'FILE LOCATED',
+    // Only one gate, and the gentler kind: this level is already the
+    // hardest thing on the board and a second interruption would break
+    // concentration the navigator depends on.
+    gates: [{ atFound: 0, kind: 'purge' }],
+    label: (f, t, facts) =>
+      f >= t
+        ? `LOCATED on ${facts.domain}`
+        : `LOCATE ${facts.org.toUpperCase()}'S COPY -- fly the file tree`,
+    brief: (facts) =>
+      `>> LEVEL 3 :: their storage is a place. open the FILE SYSTEM NAVIGATOR and go and find it on ${facts.domain}.`,
+  },
 }
 
 export function levelSpec(layer: LayerId): LevelSpec | null {
