@@ -168,6 +168,11 @@ export function applySavedCareer(state: GameState): void {
   // parses fine and leaves this `undefined`, which would silently mute a
   // returning player rather than falling through to the ON default.
   if (typeof saved.soundOn === 'boolean') state.soundOn = saved.soundOn
+  // Same guard, same reason: this flag has sat in the save unread since the
+  // first commit, so every existing save has it `undefined`. A prop set up
+  // for a shoot should still be set up when the machine is switched on
+  // tomorrow, which is the entire point of persisting it.
+  if (typeof saved.filmMode === 'boolean') state.filmMode = saved.filmMode
 }
 
 export function clearSavedState(): void {

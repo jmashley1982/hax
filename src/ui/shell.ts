@@ -35,6 +35,9 @@ import { ObjectiveBar } from './hud/objective'
 import { WindowManager } from './windows/manager'
 import { spawnWarningDialog } from './windows/dialogs'
 import { spawnProcessWindow } from './windows/processWindow'
+import { spawnTransferWindow } from './windows/transferWindow'
+import { FilmMode } from '@/film/filmMode'
+import { Autopilot } from '@/film/autopilot'
 import { spawnCamWindow } from './windows/camWindow'
 import { spawnAllyMessage, spawnOperatorMessage } from './windows/messageWindow'
 import { preloadAvailability } from '@/media/videoRegistry'
@@ -227,6 +230,9 @@ export class Shell {
    * reward for reading the messenger, it is a change to how the gate works.
    */
   private tipRolled = new Set<number>()
+  /** The film-prop controls: chrome hiding, pacing, cued beats, autopilot. */
+  private film!: FilmMode
+  private autopilot!: Autopilot
   /** The four desktop regions. Every surface mounts into one of them. */
   private desk!: DesktopLayout
   private icons!: DesktopIcons
@@ -353,6 +359,23 @@ export class Shell {
     this.mountStatusBar(this.desk.bar)
     this.bindTargeting()
     this.bindModeHotkey()
+
+    // The film-prop half. Its own rng stream (seed + 77) so engaging
+    // autopilot mid-run cannot shift the draws every other system is
+    // taking -- a director toggling F8 must not change which panels spawn.
+    this.autopilot = new Autopilot(mulberry32(state.seed + 77), {
+      key: (char) => this.handleKey(char),
+      clickables: () => this.autopilotTargets(),
+    })
+    this.film = new FilmMode({
+      line: (text) => store.emit('terminal:line', { text, tone: 'system', speed: 0 }),
+      forceAdvance: () => this.forceAdvance(),
+      toggleAutopilot: () => this.autopilot.toggle(),
+    })
+    // The dashboard's FILM switch decides how the session STARTS; F9 still
+    // toggles it live mid-take. Applied here rather than in the constructor
+    // of FilmMode so the flag has exactly one owner.
+    if (state.filmMode) this.film.setActive(true)
     if (isMobileLayout()) {
       this.mountTouchInput()
       this.bindBoardOffset()
@@ -746,6 +769,13 @@ export class Shell {
     this.offTick = null
     for (const t of this.pending) clearTimeout(t)
     this.pending = []
+    // Before anything else that could still be ticking: this unbinds the
+    // F8/F9/F10 listener and, critically, restores clock.paceMultiplier and
+    // clears the chrome flag. Leaving either behind would start the NEXT
+    // contract at 0.6x with its objective bar missing, from the dashboard,
+    // with nothing on screen to explain it.
+    this.film?.destroy()
+    this.autopilot?.setActive(false)
     this.chain?.destroy()
     this.chain = null
     this.fieldOp?.destroy()
@@ -1124,6 +1154,46 @@ export class Shell {
     else this.handleBreakthrough()
   }
 
+  /**
+   * What the autopilot is allowed to click.
+   *
+   * Scoped to live task-panel widgets and nothing else. Deliberately
+   * excludes window close boxes, the ABORT button, gate controls and
+   * messenger offers: an unattended driver that could close its own
+   * windows, abort the contract or spend a token would wreck the take it
+   * exists to record. It types and it works panels -- that is all.
+   */
+  private autopilotTargets(): Element[] {
+    const sel = [
+      '.panel .ports__cell:not(.is-open):not(.is-closed)',
+      '.panel .cipher__char:not(.is-locked)',
+      '.panel .node__dot',
+      '.panel .keyrec__cell:not(.is-locked)',
+      '.panel .trace-ping',
+      '.panel__seal',
+    ].join(',')
+    return [...this.shellEl.querySelectorAll(sel)]
+  }
+
+  /**
+   * Film mode's F10: land the descent on the line, not on the objective.
+   *
+   * Routed through the SAME handleThresholdCrossed the objective uses, so
+   * a cued advance is indistinguishable from an earned one -- palette
+   * swap, breakthrough card, unlock announcement, the finale at the
+   * bottom. A separate "just change the layer" path would drift from the
+   * real one the first time the breakthrough sequence changed.
+   *
+   * Guarded on everything that already owns the screen: forcing a
+   * breakthrough out from under a gate or the finale would leave a
+   * blocking overlay pointing at a level that no longer exists.
+   */
+  private forceAdvance(): void {
+    if (this.destroyed || this.inFinale || this.ejecting || this.extracting) return
+    if (this.gate || this.lockout) return
+    this.handleThresholdCrossed()
+  }
+
   private handleSubmit(line: string): void {
     this.markInput()
     // A typed line reaches, in order: a live chain's pending code, then a
@@ -1248,6 +1318,11 @@ export class Shell {
       this.gate.tick(dt)
       return
     }
+
+    // After the lockout and gate early-outs above, so an unattended driver
+    // never hammers a frozen board -- it waits out the interruption exactly
+    // as a person would.
+    this.autopilot.tick(dt)
 
     this.tickIdlePressure(dt)
     this.tickOffers(dt)
@@ -1404,6 +1479,10 @@ export class Shell {
 
     if (kind === 'process') {
       spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
+      return
+    }
+    if (kind === 'xfer') {
+      spawnTransferWindow(this.windows, this.contract.facts, this.rng)
       return
     }
     if (kind === 'cam' || kind === 'stream') {

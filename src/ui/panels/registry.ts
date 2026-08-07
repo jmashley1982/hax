@@ -4,7 +4,6 @@ import { BruteForcePanel } from './bruteForce'
 import { PortScanPanel } from './portScan'
 import { CipherLockPanel } from './cipherLock'
 import { NodePathPanel } from './nodePath'
-import { FileExfilPanel } from './fileExfil'
 import { KeyRecoveryPanel } from './keyRecovery'
 import { TraceDefensePanel } from './traceDefense'
 import { SignalAlignPanel } from './signalAlign'
@@ -24,7 +23,6 @@ export const PANEL_TYPES: Record<string, PanelFactory> = {
   brute: (m, c) => new BruteForcePanel(m, c),
   cipher: (m, c) => new CipherLockPanel(m, c),
   nodePath: (m, c) => new NodePathPanel(m, c),
-  fileExfil: (m, c) => new FileExfilPanel(m, c),
   keyRecovery: (m, c) => new KeyRecoveryPanel(m, c),
   traceDefense: (m, c) => new TraceDefensePanel(m, c),
   signalAlign: (m, c) => new SignalAlignPanel(m, c),
@@ -38,7 +36,6 @@ export const PANEL_LABELS: Record<string, string> = {
   brute: 'BRUTE FORCE',
   cipher: 'CIPHER LOCK',
   nodePath: 'ROUTE TRACING',
-  fileExfil: 'FILE EXFIL',
   keyRecovery: 'KEY RECOVERY',
   traceDefense: 'TRACE DEFENSE',
   signalAlign: 'SIGNAL LOCK',

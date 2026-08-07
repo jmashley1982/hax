@@ -59,6 +59,7 @@ export type AmbientKind =
   | 'news'
   | 'geo'
   | 'stream'
+  | 'xfer'
 
 /**
  * Canonical iteration order for the weighted picker.
@@ -78,6 +79,9 @@ export const AMBIENT_KINDS: readonly AmbientKind[] = [
   'news',
   'geo',
   'stream',
+  // Appended, never inserted: the order below index 0 must stay fixed or
+  // every existing seed draws a different ambient sequence.
+  'xfer',
 ]
 
 export interface LayerDef {
@@ -161,7 +165,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'none',
     modifierText: 'open network -- no countermeasures',
     systemKind: 'public net',
-    ambientMix: { news: 4, geo: 3, cam: 3, doc: 2, process: 2, ally: 2, operator: 1 },
+    ambientMix: { news: 4, geo: 3, cam: 3, doc: 2, process: 2, ally: 2, operator: 1, xfer: 2 },
   },
   perimeter: {
     id: 'perimeter',
@@ -183,7 +187,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'sealed',
     modifierText: 'nodes arrive SEALED -- click once to break the seal',
     systemKind: 'edge appliance',
-    ambientMix: { process: 5, cam: 4, doc: 3, operator: 3, ally: 2, news: 1, geo: 1 },
+    ambientMix: { process: 5, cam: 4, doc: 3, operator: 3, ally: 2, news: 1, geo: 1, xfer: 3 },
   },
   intranet: {
     id: 'intranet',
@@ -199,13 +203,13 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
       fg: '#ffb339', fgDim: '#94631a', fgBright: '#ffe2b0', accent2: '#ff8c1a',
       glow: '#ffb339', bgDeep: '#0a0602', panel: '#160f05', panelEdge: '#4a3312',
     },
-    unlocks: ['fileExfil', 'dragExfil', 'fs3d'],
+    unlocks: ['dragExfil', 'fs3d'],
     panelFloor: 4,
     sizeBias: 0.4,
     modifier: 'decay',
     modifierText: 'idle nodes DECAY -- keep rotating between them',
     systemKind: 'corporate lan',
-    ambientMix: { doc: 7, cam: 4, process: 3, geo: 3, news: 2, ally: 2, operator: 2 },
+    ambientMix: { doc: 7, cam: 4, process: 3, geo: 3, news: 2, ally: 2, operator: 2, xfer: 4 },
   },
   core: {
     id: 'core',
@@ -227,7 +231,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'linked',
     modifierText: 'nodes are LINKED -- cracking one advances its twin',
     systemKind: 'data centre',
-    ambientMix: { doc: 6, cam: 5, process: 5, operator: 3, geo: 2, news: 2 },
+    ambientMix: { doc: 6, cam: 5, process: 5, operator: 3, geo: 2, news: 2, xfer: 3 },
   },
   kernel: {
     id: 'kernel',
@@ -249,7 +253,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'hunted',
     modifierText: 'you are HUNTED -- traces incoming, block them',
     systemKind: 'bare metal',
-    ambientMix: { process: 6, cam: 5, operator: 4, doc: 3, news: 2, stream: 2 },
+    ambientMix: { process: 6, cam: 5, operator: 4, doc: 3, news: 2, stream: 2, xfer: 2 },
   },
   physical: {
     id: 'physical',
@@ -274,7 +278,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifier: 'total',
     modifierText: 'FULL LOCKDOWN -- everything at once',
     systemKind: 'the building',
-    ambientMix: { cam: 8, stream: 4, doc: 3, geo: 2, process: 2, operator: 1 },
+    ambientMix: { cam: 8, stream: 4, doc: 3, geo: 2, process: 2, operator: 1, xfer: 2 },
   },
 }
 

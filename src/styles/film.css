@@ -1,0 +1,51 @@
+/* ============================================================
+   FILM MODE (film/filmMode.ts)
+
+   One attribute on <html> hides everything that reads as a GAME, and
+   nothing that reads as a HACK. The distinction is the whole feature:
+   a window, a meter, a camera feed and a contact list all belong in the
+   shot; "OBJECTIVE: CLICK the open ports (0/4 found)" and
+   "MODE:CASUAL HACK  THEME:PHOSPHOR  SEED:c4f1" do not.
+
+   Hiding rather than removing, so toggling back mid-take restores the
+   board exactly as it was -- and so nothing reflows. Every rule below
+   uses visibility/opacity or display on a leaf element that owns no
+   layout the rest of the desktop depends on.
+   ============================================================ */
+
+/* The instructional half of the objective bar: the label chip and the
+   per-panel "what to click" hint. The JOB line stays -- "MAP HALCYON
+   DYNAMICS -- 2/3 live hosts found" is exactly what should be on a
+   screen in a film. */
+:root[data-film='on'] .objective__label,
+:root[data-film='on'] .objective__text {
+  display: none;
+}
+
+/* The footer's game furniture. The TARGET readout on the left stays:
+   naming who you are inside is diegetic and it is usually the one piece
+   of text a shot needs to sell. */
+:root[data-film='on'] .statusbar__abort {
+  visibility: hidden;
+}
+
+:root[data-film='on'] .statusbar > span:last-child {
+  display: none;
+}
+
+/* Desktop icons are period OS furniture, not game chrome, so they stay --
+   but the budget's suppressed-spawn counter is a debug readout. */
+:root[data-film='on'] .desk__suppressed {
+  display: none;
+}
+
+/* The mode badge on the shell root, if a theme paints one. */
+:root[data-film='on'] .shell::after {
+  content: none;
+}
+
+/* Nothing may pulse for attention at the player when there is no player.
+   An unread pip blinking through a take is a tell. */
+:root[data-film='on'] .msgr__unread {
+  display: none;
+}

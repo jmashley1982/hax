@@ -244,7 +244,34 @@ export class Dashboard {
     paintSound()
     soundRow.append(soundLab, soundBtn)
 
-    box.append(modeRow, modeHint, themeRow, soundRow)
+    // FILM. Hotkeys alone would be undiscoverable -- nobody finds F9 by
+    // accident -- so the toggle lives here, states what it does, and names
+    // the keys. Persisted through the same saveState as everything else,
+    // because a prop set up for a shoot should still be set up tomorrow.
+    const filmRow = document.createElement('div')
+    filmRow.className = 'dash__field'
+    const filmLab = document.createElement('span')
+    filmLab.textContent = 'FILM'
+    const filmBtn = document.createElement('button')
+    filmBtn.className = 'dash__toggle'
+    const paintFilm = (): void => {
+      filmBtn.textContent = this.state.filmMode ? 'ON' : 'OFF'
+      filmBtn.dataset.film = this.state.filmMode ? 'on' : 'off'
+      filmHint.textContent = this.state.filmMode
+        ? 'no game chrome, 0.6x pace. F9 toggles · F10 cues the next layer · F8 flies it'
+        : 'prop mode: hides the game chrome and slows the pacing for camera'
+    }
+    const filmHint = document.createElement('div')
+    filmHint.className = 'dash__fieldhint'
+    filmBtn.addEventListener('click', () => {
+      this.state.filmMode = !this.state.filmMode
+      paintFilm()
+      saveState(this.state)
+    })
+    paintFilm()
+    filmRow.append(filmLab, filmBtn)
+
+    box.append(modeRow, modeHint, themeRow, soundRow, filmRow, filmHint)
     return box
   }
 

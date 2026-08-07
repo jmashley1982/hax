@@ -401,53 +401,49 @@
   box-shadow: 0 0 6px var(--glow);
 }
 
-/* ---- FILE EXFIL ---- */
+/* ---- XFER (ambient transfer window) ----
+   FILE EXFIL's rows and bar, demoted. The panel it belonged to duplicated
+   VAULT PULL, so the mechanic went and the look stayed. */
 
-.exfil-list {
+.xfer__body {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-}
-
-.exfil-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: 'name size' 'bar bar';
-  gap: 2px 6px;
-  align-items: center;
-  background: var(--bg-deep);
-  border: 1px solid var(--panel-edge);
-  color: var(--fg-dim);
-  font-family: inherit;
+  gap: 5px;
   font-size: 11px;
-  padding: 4px 6px;
-  cursor: pointer;
-  text-align: left;
+  color: var(--fg-dim);
 }
 
-.exfil-row:hover { border-color: var(--fg); }
-.exfil-row__name { grid-area: name; color: var(--fg); }
-.exfil-row__size { grid-area: size; opacity: 0.7; }
+.xfer__src {
+  color: var(--fg);
+  word-break: break-all;
+}
 
-.exfil-row__bar {
-  grid-area: bar;
-  height: 3px;
+.xfer__bar {
+  height: 6px;
   background: rgba(255, 255, 255, 0.08);
-  display: block;
+  border: 1px solid var(--panel-edge);
 }
 
-.exfil-row__fill {
+.xfer__fill {
   display: block;
   height: 100%;
   width: 0%;
   background: var(--accent-2);
-  transition: width 150ms linear;
+  box-shadow: 0 0 6px var(--glow);
+  transition: width 120ms linear;
 }
 
-.exfil-row.is-done {
-  border-color: var(--ok);
-  color: var(--fg-bright);
+.xfer__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
 }
+
+.win.xfer.is-done .xfer__fill { background: var(--ok); }
+.win.xfer.is-bad .xfer__fill { background: var(--danger, #ff4a4a); }
+.win.xfer.is-bad .xfer__meta { color: var(--danger, #ff4a4a); }
 
 /* ---- TRACE DEFENSE ---- */
 

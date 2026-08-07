@@ -20,6 +20,10 @@ import '@/styles/messenger.css'
 import '@/styles/desktop.css'
 import '@/styles/lockout.css'
 import '@/styles/gate.css'
+// After every surface it hides, so a chrome rule never loses to the
+// stylesheet that defined the thing -- import order is cascade priority
+// here, and this file's whole job is to override.
+import '@/styles/film.css'
 // Last, so its [data-layout='mobile'] rules win over the desktop defaults
 // they override without needing !important on every declaration.
 import '@/styles/mobile.css'
