@@ -24,6 +24,21 @@ import type { MissionFacts } from '@/content/grammar'
 
 export type ObjectiveKind = 'map' | 'breach' | 'locate' | 'assemble' | 'hold' | 'trip'
 
+/**
+ * A blocking interrupt, placed on the OBJECTIVE rather than on a clock.
+ *
+ * This is the whole difference between an interruption that means
+ * something and the "random" the player reported: every other interrupt in
+ * the game fires off `nextChainAt`/`nextFieldOpAt`/`nextReverseRollAt`,
+ * timers unrelated to anything the player is doing. A gate fires because
+ * you just got somewhere.
+ */
+export interface GateSpec {
+  /** Objective items held when this fires. */
+  atFound: number
+  kind: 'password' | 'purge'
+}
+
 export interface LevelSpec {
   kind: ObjectiveKind
   /** Panel type ids that yield objective items. Anything else is just work. */
@@ -36,6 +51,12 @@ export interface LevelSpec {
   brief: (facts: MissionFacts) => string
   /** Short noun for the FIND LOG, e.g. "HOSTS MAPPED". */
   unit: string
+  /**
+   * Blocking interrupts. Count and variety grow with depth -- level 1 gets
+   * one, and only the gentler kind, so the first one a player ever sees is
+   * a surprise rather than an ambush.
+   */
+  gates: readonly GateSpec[]
 }
 
 /**
@@ -53,6 +74,7 @@ const LEVEL_SPECS: Partial<Record<LayerId, LevelSpec>> = {
     tools: ['ports'],
     target: 3,
     unit: 'HOSTS MAPPED',
+    gates: [{ atFound: 2, kind: 'password' }],
     label: (f, t, facts) => `MAP ${facts.org.toUpperCase()} -- ${f}/${t} live hosts found`,
     brief: (facts) =>
       `>> LEVEL 1 :: map the perimeter. run PORT SCANs until you have three live hosts on ${facts.domain}.`,
@@ -62,6 +84,10 @@ const LEVEL_SPECS: Partial<Record<LayerId, LevelSpec>> = {
     tools: ['nodePath', 'cipher'],
     target: 3,
     unit: 'KEY SEGMENTS',
+    gates: [
+      { atFound: 1, kind: 'purge' },
+      { atFound: 2, kind: 'password' },
+    ],
     label: (f, t) => `BREACH THE GATEWAY -- ${f}/${t} key segments assembled`,
     brief: () =>
       '>> LEVEL 2 :: trace a route to bank a fragment, then feed it to a CIPHER LOCK. three segments opens the gateway.',
@@ -115,6 +141,27 @@ export class LevelRun {
   /** Fragments in hand -- shown in the FIND LOG so the two-tool loop is legible. */
   get held(): number {
     return this.fragments
+  }
+
+  /**
+   * Gates already fired, by their `atFound`.
+   *
+   * Tracked here rather than in the Shell because a failed gate can push
+   * `found` back down (see penalise), and without this the same gate would
+   * fire again the moment you recovered -- turning one mistake into a
+   * loop.
+   */
+  private firedGates = new Set<number>()
+
+  /** The gate due at the current count, if one is and it has not fired. */
+  takeDueGate(): GateSpec | null {
+    for (const g of this.spec.gates) {
+      if (g.atFound !== this.found) continue
+      if (this.firedGates.has(g.atFound)) continue
+      this.firedGates.add(g.atFound)
+      return g
+    }
+    return null
   }
 
   /**

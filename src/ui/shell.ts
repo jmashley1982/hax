@@ -5,6 +5,7 @@ import { clock } from '@/core/clock'
 import { mulberry32, hashSeed, int, type Rng } from '@/core/rng'
 import { LAYER_ORDER, type GameState } from '@/core/state'
 import { levelSpec, LevelRun } from '@/sim/levels'
+import { Gate } from '@/ui/gate'
 import { FindLog } from '@/ui/hud/findLog'
 import { InputPipeline } from '@/core/input'
 import { PLAY_MODES, computeProgress, type PlayModeProfile } from '@/core/progress'
@@ -60,6 +61,7 @@ import { DesktopLayout } from './desktop/layout'
 import { DesktopIcons } from './desktop/icons'
 import type { TaskPanel } from './panels/panel'
 
+const GATE_DEFER_MS = 350
 const BREAKTHROUGH_GRACE_MS = 2500
 
 /** How a contract ended, handed back to the App for career bookkeeping. */
@@ -190,6 +192,13 @@ export class Shell {
    */
   private levelRun: LevelRun | null = null
   private findLog: FindLog | null = null
+  /**
+   * The one thing in this game that stops the world. While set, onTick and
+   * handleKey both early-out -- the same two points the lockout already
+   * uses -- so no panel decays, no threat lands, no window opens and no
+   * keystroke reaches the board.
+   */
+  private gate: Gate | null = null
   /** The four desktop regions. Every surface mounts into one of them. */
   private desk!: DesktopLayout
   private icons!: DesktopIcons
@@ -402,6 +411,13 @@ export class Shell {
     this.paintLevelObjective()
   }
 
+  /** Drop a live gate without resolving it -- the board it guarded is gone. */
+  private closeGate(): void {
+    this.gate?.destroy()
+    this.gate = null
+    this.shellEl.classList.remove('is-gated')
+  }
+
   private endLevel(): void {
     this.findLog?.destroy()
     this.findLog = null
@@ -423,6 +439,95 @@ export class Shell {
    */
   private onLevelMilestone(): void {
     this.findLog?.flash()
+    this.maybeOpenGate()
+  }
+
+  /**
+   * Open the gate due at this objective count, if any.
+   *
+   * Deferred a beat so the credit line, the FIND LOG flash and the panel's
+   * own CRACKED animation land first -- a gate that slams up in the same
+   * frame as the reward reads as a punishment for succeeding.
+   *
+   * The beat is SHORT, and that is load-bearing. At 900ms a fast player
+   * finishes the objective inside the deferral, the level is replaced, and
+   * the guard below correctly drops the gate -- so the gate simply never
+   * happens. Measured: a driver clearing PORT SCANs flat out saw zero
+   * gates across four runs. 350ms still separates the reward from the
+   * interruption and is much harder to outrun.
+   */
+  private maybeOpenGate(): void {
+    const run = this.levelRun
+    if (!run || this.gate) return
+    // Never stack a gate on top of something that already owns the screen.
+    if (this.lockout || this.inFinale || this.ejecting || this.extracting) return
+    if (this.manhunt?.active || this.reverseHack?.active || this.fieldOp?.critical) return
+    const due = run.takeDueGate()
+    if (!due) return
+
+    this.later(() => {
+      if (this.destroyed || this.gate || this.lockout) return
+      // The gate belongs to the level that scheduled it. Without this
+      // check a fast player can finish the objective inside the 900ms
+      // deferral, break through, and have the OLD level's gate slam up on
+      // the NEW one -- where failing it would penalise an objective it has
+      // nothing to do with. Measured: a gate arriving at PERIMETER with
+      // 0/3 key segments, scheduled by SURFACE's 2/3 hosts.
+      if (this.levelRun !== run) return
+      this.openGate(due.kind)
+    }, GATE_DEFER_MS)
+  }
+
+  private openGate(kind: 'password' | 'purge'): void {
+    this.shellEl.classList.add('is-gated')
+    this.objective.set(
+      kind === 'password' ? 'TYPE THE CODE -- nothing moves until you do' : 'BIN THE BAD FILES -- now',
+    )
+    this.gate = new Gate({
+      kind,
+      org: this.target.org,
+      rng: this.rng,
+      mount: this.shellEl,
+      // Generous: the drama is that everything stopped, not the clock.
+      limitMs: kind === 'password' ? 12_000 : 14_000,
+      // The ally coupling -- a contact handing you this code 5-15s before
+      // the gate arrives -- lands with the remaining gate kinds. Gate
+      // already accepts it; nothing supplies one yet.
+      knownCode: null,
+      line: (text, tone) => store.emit('terminal:line', { text, tone, speed: 0 }),
+      onResolve: (ok) => this.resolveGate(ok),
+    })
+  }
+
+  /**
+   * Failing costs you and the run continues -- the agreed rule. A big
+   * integrity hit, a heat spike, and one objective item taken back, which
+   * is the cheapest honest penalty: felt immediately, recoverable by doing
+   * more of what you were already doing, and incapable of making the level
+   * unwinnable.
+   */
+  private resolveGate(ok: boolean): void {
+    this.gate = null
+    this.shellEl.classList.remove('is-gated')
+    if (ok) {
+      this.integrity.repair(INTEGRITY_GAIN.waveRepelled)
+      this.heat.add(-12)
+      awardScore(this.state, 200)
+      store.emit('terminal:line', { text: '>>>> session re-keyed -- you are still in', tone: 'success', speed: 0 })
+    } else {
+      this.integrity.damage(INTEGRITY_COST.lostWave)
+      this.heat.add(28)
+      this.levelRun?.penalise()
+      this.findLog?.paint()
+      this.paintLevelObjective()
+      store.emit('terminal:line', {
+        text: '!! they got a hand in. you lost ground.',
+        tone: 'danger',
+        speed: 0,
+      })
+    }
+    this.refreshTarget()
+    this.renderObjective()
   }
 
   /**
@@ -522,6 +627,7 @@ export class Shell {
     this.lockout = null
     this.reverseHack?.destroy()
     this.reverseHack = null
+    this.closeGate()
     this.endLevel()
     this.director.clearAll()
     this.windows.closeAll()
@@ -778,6 +884,8 @@ export class Shell {
     // its own capture-phase listener, and letting input also reach the
     // board behind it would advance panels the player can't even see.
     if (this.lockout) return
+    // A gate binds its own capture-phase listener and owns every key.
+    if (this.gate) return
     playSfx('key')
     this.inputPipeline.push({ kind: 'key', token: char })
 
@@ -1002,6 +1110,13 @@ export class Shell {
     // -- nothing should advance behind the reboot screen, least of all a
     // timer that could eject them for a wave they physically cannot see.
     if (this.lockout) return
+
+    // The gate's own clock is the only thing that may run while a gate is
+    // up -- it has to keep counting down, and everything else has to stop.
+    if (this.gate) {
+      this.gate.tick(dt)
+      return
+    }
 
     this.tickIdlePressure(dt)
     this.tickOffers(dt)
@@ -1256,6 +1371,7 @@ export class Shell {
     this.extracting = true
     // Getting out replaces the level objective outright -- two competing
     // goals in the same bar is how the wave guard's bug happened before.
+    this.closeGate()
     this.endLevel()
 
     this.heat.add(45)
@@ -1370,6 +1486,7 @@ export class Shell {
     this.reverseHack = null
     // The contract is gone; a FIND LOG still counting toward an objective
     // nobody can finish would sit over the ending banner.
+    this.closeGate()
     this.endLevel()
     this.director.clearAll()
     this.explicitTarget = null
@@ -1405,6 +1522,10 @@ export class Shell {
     this.fieldOp?.abort('terminal seized')
     if (this.lockout) return
     playSfx('powerDown')
+    // onTick early-outs on `lockout` BEFORE it ticks the gate, so a gate
+    // left standing here would freeze with a dead clock and no way to
+    // answer it -- the board would simply never come back.
+    this.closeGate()
     this.integrity.damage(INTEGRITY_COST.lockout)
     this.reverseHack?.destroy()
     this.reverseHack = null
@@ -1541,6 +1662,7 @@ export class Shell {
    * here).
    */
   private handleEjection(): void {
+    this.closeGate()
     this.fieldOp?.abort('connection lost')
     if (this.inFinale || this.ejecting || this.manhunt?.active) return
     this.ejecting = true
@@ -2119,6 +2241,7 @@ export class Shell {
 
     // The job is done; the FIND LOG must not sit there mid-count over the
     // ending, and no late panel clearance may credit a level that is over.
+    this.closeGate()
     this.endLevel()
     this.director.clearAll()
     this.explicitTarget = null

@@ -1,0 +1,249 @@
+/* ============================================================
+   GATES (ui/gate.ts)
+   The only thing in this game that stops the world.
+
+   Everything else the target does runs alongside a playable board. This
+   does not: the simulation is frozen behind the scrim, every keystroke
+   belongs to the gate, and the run does not continue until it resolves.
+   The chrome has to say that at a glance -- hence a full-bleed scrim
+   rather than another window on the pile.
+   ============================================================ */
+
+.gate {
+  position: absolute;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  /* Nearly opaque. A gate you can still read the board through invites you
+     to keep trying to play it, which is the one thing it must not do. */
+  background: color-mix(in srgb, var(--bg-deep) 92%, transparent);
+  animation: gate-in 180ms ease-out;
+}
+
+@keyframes gate-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.gate__frame {
+  width: min(94vw, 480px);
+  border: 2px solid var(--danger, #ff4a4a);
+  background: var(--panel);
+  padding: 1rem 1.1rem;
+  box-shadow: 0 0 60px -10px var(--danger, #ff4a4a);
+}
+
+.gate__head {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: var(--danger, #ff4a4a);
+  font-weight: bold;
+}
+
+.gate__sub {
+  margin-top: 0.2rem;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+}
+
+.gate__body {
+  margin: 0.9rem 0 0.7rem;
+}
+
+.gate__label {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--fg-dim);
+  margin-bottom: 0.4rem;
+}
+
+/* -- password ---------------------------------------------------------- */
+
+/* The code the gate wants, at a size you cannot miss under pressure. A
+   blocking prompt whose answer is hard to READ is a wall, not a puzzle. */
+.gate__code {
+  font-size: 34px;
+  letter-spacing: 0.3em;
+  color: var(--fg-bright);
+  text-align: center;
+  text-shadow: 0 0 20px var(--glow);
+  margin-bottom: 0.6rem;
+}
+
+.gate__slots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.gate__slot {
+  width: 40px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--panel-edge);
+  background: var(--bg-deep);
+  color: var(--fg-bright);
+  font-size: 20px;
+  letter-spacing: 0.1em;
+}
+
+.gate__slot.is-set {
+  border-color: var(--ok);
+  box-shadow: 0 0 12px -2px var(--ok);
+}
+
+.gate__slots.is-wrong {
+  animation: gate-shake 300ms ease-out;
+}
+
+@keyframes gate-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* -- purge ------------------------------------------------------------- */
+
+.gate__files {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.gate__file {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-edge);
+  padding: 5px 7px;
+  font-size: 11px;
+}
+
+.gate__file.is-gone {
+  opacity: 0.2;
+  pointer-events: none;
+  text-decoration: line-through;
+}
+
+.gate__file-name {
+  color: var(--fg);
+  word-break: break-all;
+}
+
+/* The tell is always visible. A timed prompt whose answer needs a separate
+   scan action would be a guess, and a blocking guess is the worst thing
+   this system could be. */
+.gate__file-tell {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.gate__file-tell.is-bad {
+  color: var(--danger, #ff4a4a);
+}
+
+.gate__bin {
+  background: transparent;
+  border: 1px solid var(--panel-edge);
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  padding: 4px 8px;
+  min-height: 30px;
+  cursor: pointer;
+}
+
+.gate__bin:hover {
+  border-color: var(--danger, #ff4a4a);
+  color: var(--danger, #ff4a4a);
+}
+
+/* -- clock ------------------------------------------------------------- */
+
+.gate__clock {
+  text-align: right;
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  color: var(--fg-dim);
+}
+
+.gate__clock.is-close {
+  color: var(--danger, #ff4a4a);
+  animation: gate-tick 0.5s steps(2) infinite;
+}
+
+@keyframes gate-tick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.gate__track {
+  height: 6px;
+  margin-top: 0.4rem;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.gate__bar {
+  height: 100%;
+  width: 100%;
+  background: var(--danger, #ff4a4a);
+}
+
+/* -- outcomes ---------------------------------------------------------- */
+
+.gate.is-cleared .gate__frame {
+  border-color: var(--ok);
+  box-shadow: 0 0 60px -10px var(--ok);
+}
+
+.gate.is-cleared { animation: gate-out 400ms ease-in forwards; }
+.gate.is-failed { animation: gate-fail 880ms ease-in forwards; }
+
+@keyframes gate-out { to { opacity: 0; } }
+@keyframes gate-fail {
+  0% { opacity: 1; }
+  30% { opacity: 1; filter: invert(1); }
+  100% { opacity: 0; }
+}
+
+/* The board behind knows it is held. Cheap, and it means the freeze is
+   legible even in a screenshot.
+
+   `pointer-events: none` is defence in depth, not decoration. The freeze
+   itself lives in two early-outs (onTick and handleKey) which stop the
+   simulation and the keyboard -- but a panel's own cell listeners are
+   plain DOM handlers that neither of those touch. Today they are
+   unreachable because the scrim covers the screen; that is a fact about
+   stacking, and stacking is exactly the kind of thing that quietly stops
+   being true. This makes the board inert to pointers by construction. */
+.shell.is-gated .desk__work,
+.shell.is-gated .desk__rail {
+  filter: grayscale(0.7) brightness(0.5);
+  pointer-events: none;
+}
+
+[data-layout='mobile'] .gate__code { font-size: 26px; }
+[data-layout='mobile'] .gate__slot { width: 34px; height: 44px; }
+[data-layout='mobile'] .gate__bin { min-height: 40px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gate,
+  .gate.is-cleared,
+  .gate.is-failed,
+  .gate__clock.is-close,
+  .gate__slots.is-wrong { animation: none; }
+}

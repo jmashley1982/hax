@@ -19,6 +19,7 @@ import '@/styles/chain.css'
 import '@/styles/messenger.css'
 import '@/styles/desktop.css'
 import '@/styles/lockout.css'
+import '@/styles/gate.css'
 // Last, so its [data-layout='mobile'] rules win over the desktop defaults
 // they override without needing !important on every declaration.
 import '@/styles/mobile.css'
