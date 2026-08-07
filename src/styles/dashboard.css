@@ -79,6 +79,83 @@
   min-height: 0;
 }
 
+/* The left column carries four boxes now (OPERATOR, SETTINGS, TOP SCORES,
+   SYSTEM) and SETTINGS grew from one cycling toggle into a three-row mode
+   ladder. At 1280x720 those three fixed boxes are taller than the column,
+   and because .dash__box is deliberately flex:0 0 auto the only box that
+   *could* absorb the deficit was SYSTEM -- which got squeezed to 24px, i.e.
+   its own padding, so its title and log rendered outside its border and
+   past the footer. That is the "bottom left is an overlapping mess".
+
+   Two halves to the fix: give the column a scrollbar so a column that
+   genuinely doesn't fit scrolls instead of spilling, and give the log box a
+   floor so it is never crushed into a border. Without the floor the flex
+   solver still shrinks it to nothing and the column never overflows enough
+   to scroll -- so the scrollbar alone would fix nothing. */
+.dash__col--left {
+  overflow-y: auto;
+}
+
+/* The floor that stops the crush: 24px of padding+border, a 24px box title,
+   and the log's own min-height. It must stay >= that sum or the log's
+   min-height wins and its content escapes the border again -- the exact
+   failure. The pair below is measured against 1280x720, the smallest
+   desktop this layout targets, where the column has ~568px for a 152px
+   OPERATOR + a 289px SETTINGS + this. */
+.dash__col--left .dash__box--grow {
+  min-height: 100px;
+}
+
+.dash__col--left .dash__log {
+  min-height: 52px;
+}
+
+/* Short desktops (1152x648 and the like) are ~70px short of the left
+   column's three boxes even after the wall moved out. Tighten the vertical
+   rhythm rather than let it scroll: Chromium paints OVERLAY scrollbars
+   here, so a scrolled column gives the player no clue the OPERATOR box
+   exists at all -- it just looks missing. Keyed on height, not width,
+   because height is the axis that is actually short. */
+@media (max-height: 760px) {
+  .dash {
+    padding: 0.7rem 1.2rem;
+    gap: 0.5rem;
+  }
+
+  .dash__head {
+    padding-bottom: 0.4rem;
+  }
+
+  .dash__foot {
+    padding-top: 0.4rem;
+  }
+
+  .dash__body,
+  .dash__col {
+    gap: 0.5rem;
+  }
+
+  .dash__box {
+    padding: 0.45rem 0.8rem;
+    gap: 0.35rem;
+  }
+
+  .dash__toggle,
+  .dash__mode {
+    min-height: 28px;
+  }
+
+  /* The floor drops with the padding it was derived from: 16px of
+     padding+border, a 22px title, a 6px gap and the 40px log below. */
+  .dash__col--left .dash__box--grow {
+    min-height: 86px;
+  }
+
+  .dash__col--left .dash__log {
+    min-height: 40px;
+  }
+}
+
 .dash__box-title {
   font-size: 10px;
   letter-spacing: 0.24em;
@@ -102,7 +179,10 @@
 
 /* One-line explanation under a setting whose effect isn't guessable. */
 .dash__fieldhint {
-  margin: -0.25rem 0 0.35rem;
+  /* No negative top margin. It predates the three-row mode ladder, and
+     against a bordered DEEP HACK button it eats all but ~1.5px of the flex
+     gap -- the hint reads as sitting on the button's border. */
+  margin: 0 0 0.3rem;
   font-size: 10px;
   letter-spacing: 0.06em;
   color: var(--fg-dim);
@@ -435,6 +515,42 @@
   max-height: 90px;
 }
 
+/* On a phone the columns linearise into one scrolling page, so the desktop
+   column scroller would become a scroller inside a scroller -- the classic
+   way to make a list impossible to flick. The page scrolls; the column
+   doesn't. */
+[data-layout='mobile'] .dash__col--left {
+  overflow-y: visible;
+}
+
+/* ...but only if the page can actually scroll, and it could not. .dash is
+   `position: absolute; inset: 0` and .dash__body is `flex: 1 1 auto`, so the
+   body was sized to the viewport and six stacked boxes had to fit 568px.
+   They can't -- so the SYSTEM box was crushed to its title bar and its log
+   rendered 66px outside its own border. Same defect as the desktop column,
+   different cause: there is no room here, so the answer is real scrolling,
+   not a tighter fit. */
+[data-layout='mobile'] .dash {
+  overflow-y: auto;
+}
+
+[data-layout='mobile'] .dash__body {
+  flex: 0 0 auto;
+}
+
+[data-layout='mobile'] .dash__col--left .dash__box--grow {
+  min-height: 0;
+}
+
+/* JACK IN must not scroll away with the content -- it is the reason the
+   screen exists. Opaque, because the page now moves underneath it. */
+[data-layout='mobile'] .dash__foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--bg-deep);
+}
+
 [data-layout='mobile'] .contract {
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas: 'org tier' 'sector job';
@@ -633,12 +749,17 @@
   box-shadow: 0 0 16px -2px var(--warn, #ffb339);
 }
 
+/* Ten banked runs is ~150px of rows in a box that never shrinks. Cap the
+   visible wall at five and let the rest scroll, so a full table costs the
+   contract board five rows of height instead of half of it. */
 .scores {
   display: flex;
   flex-direction: column;
   gap: 2px;
   font-size: 10px;
   letter-spacing: 0.08em;
+  max-height: 82px;
+  overflow-y: auto;
 }
 
 .scores__row {

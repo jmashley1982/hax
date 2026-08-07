@@ -88,12 +88,7 @@ export class Dashboard {
     // --- left column: operator + settings + log
     const left = document.createElement('div')
     left.className = 'dash__col dash__col--left'
-    left.append(
-      this.buildOperatorPanel(),
-      this.buildSettingsPanel(),
-      this.buildScorePanel(),
-      this.buildLogPanel(),
-    )
+    left.append(this.buildOperatorPanel(), this.buildSettingsPanel(), this.buildLogPanel())
 
     // --- right column: the contract board + detail
     const right = document.createElement('div')
@@ -113,7 +108,13 @@ export class Dashboard {
     this.detailEl.className = 'dash__detail'
     detailBox.appendChild(this.detailEl)
 
-    right.append(boardBox, detailBox)
+    // The wall lives in the RIGHT column, not the left. The left column has
+    // no flexible box big enough to absorb it -- .dash__box never shrinks by
+    // design, so a fourth fixed box there squeezed the SYSTEM log down to its
+    // own padding and its contents rendered outside the border, over the
+    // footer. The right column's board IS a scroller, so it gives up the
+    // height gracefully instead.
+    right.append(boardBox, detailBox, this.buildScorePanel())
     body.append(left, right)
     return body
   }
