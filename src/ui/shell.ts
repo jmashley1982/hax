@@ -4,6 +4,8 @@ import { audio } from '@/audio/engine'
 import { clock } from '@/core/clock'
 import { mulberry32, hashSeed, int, type Rng } from '@/core/rng'
 import { LAYER_ORDER, type GameState } from '@/core/state'
+import { levelSpec, LevelRun } from '@/sim/levels'
+import { FindLog } from '@/ui/hud/findLog'
 import { InputPipeline } from '@/core/input'
 import { PLAY_MODES, computeProgress, type PlayModeProfile } from '@/core/progress'
 import { matchCommand } from '@/sim/commands/registry'
@@ -180,6 +182,14 @@ export class Shell {
    * other about how many windows existed.
    */
   private budget: BoardBudget
+
+  /**
+   * CASUAL HACK only. The level's objective and how far along it is; null
+   * in INFINITE HACK and on any layer that has no spec yet, where the old
+   * progress threshold remains the win condition.
+   */
+  private levelRun: LevelRun | null = null
+  private findLog: FindLog | null = null
   /** The four desktop regions. Every surface mounts into one of them. */
   private desk!: DesktopLayout
   private icons!: DesktopIcons
@@ -363,6 +373,80 @@ export class Shell {
     })
     store.emit('terminal:line', { text: `>> JOB :: ${this.contract.job.brief}`, tone: 'success', speed: 2 })
     this.objective.setJob(this.contract.job.brief)
+    this.beginLevel()
+  }
+
+  // -- levels ------------------------------------------------------------
+
+  /**
+   * Open the current layer's level, if this mode has levels and this layer
+   * has a spec.
+   *
+   * Both conditions are real escape hatches, not defensive noise: INFINITE
+   * HACK deliberately has no objectives, and the deeper layers have no
+   * specs yet. Either way `levelRun` stays null and the old threshold is
+   * still the win condition, so the game is playable end to end while only
+   * two levels are real.
+   */
+  private beginLevel(): void {
+    this.endLevel()
+    if (!this.mode.levelled) return
+    const spec = levelSpec(this.state.layer)
+    if (!spec) return
+
+    this.levelRun = new LevelRun(this.state.layer, spec, () => this.onLevelMilestone())
+    this.findLog = new FindLog(this.windows, this.levelRun)
+    // The board has to actually offer the tool the level asks for.
+    this.director.setPreferredTypes(spec.tools)
+    store.emit('terminal:line', { text: spec.brief(this.contract.facts), tone: 'success', speed: 2 })
+    this.paintLevelObjective()
+  }
+
+  private endLevel(): void {
+    this.findLog?.destroy()
+    this.findLog = null
+    this.levelRun = null
+    this.director.setPreferredTypes([])
+  }
+
+  private paintLevelObjective(): void {
+    const run = this.levelRun
+    if (!run) return
+    this.objective.setJob(run.spec.label(run.found, run.target, this.contract.facts))
+  }
+
+  /**
+   * An objective item landed. This is the hook the blocking gates will
+   * attach to -- they fire on OBJECTIVE PROGRESS rather than on a wall
+   * clock, which is the difference between an interruption that means
+   * something and the "random" the player reported.
+   */
+  private onLevelMilestone(): void {
+    this.findLog?.flash()
+  }
+
+  /**
+   * A cleared panel, offered to the level.
+   *
+   * The panel's type is recoverable from its id (`${type}-${hex}`) --
+   * Director.spawn already splits it the same way for its own
+   * de-duplication, so no new plumbing is needed to know what was cleared.
+   */
+  private creditLevel(panel: TaskPanel): void {
+    const run = this.levelRun
+    if (!run) return
+    const typeId = panel.id.split('-')[0] ?? ''
+    const result = run.credit(typeId)
+    if (result.note) {
+      store.emit('terminal:line', {
+        text: result.note,
+        tone: result.counted ? 'success' : 'warning',
+        speed: 0,
+      })
+    }
+    this.findLog?.paint()
+    this.paintLevelObjective()
+    if (run.complete) this.handleThresholdCrossed()
   }
 
 
@@ -438,6 +522,7 @@ export class Shell {
     this.lockout = null
     this.reverseHack?.destroy()
     this.reverseHack = null
+    this.endLevel()
     this.director.clearAll()
     this.windows.closeAll()
     this.terminal.destroy()
@@ -788,7 +873,10 @@ export class Shell {
 
   private applyResidualProgress(): void {
     if (this.elapsedMs < this.breakthroughGraceUntil) return
-    if (this.layers.addProgress(0.6)) this.handleThresholdCrossed()
+    // The purest form of the thing this round exists to remove: layer
+    // progress for doing nothing at all. It still runs with a level live,
+    // because tension has to keep moving, but it can no longer WIN.
+    if (this.layers.addProgress(0.6) && !this.levelRun) this.handleThresholdCrossed()
   }
 
   /** A crossed threshold means a normal descent everywhere except the last layer, where it means the finale. */
@@ -867,7 +955,11 @@ export class Shell {
     if (this.elapsedMs < this.breakthroughGraceUntil) return
     const crossed = this.layers.addProgress(delta * 40)
     this.renderObjective()
-    if (crossed) this.handleThresholdCrossed()
+    // With a level running the threshold is no longer the win condition --
+    // it stays only because `tension` (progress/threshold) is what paces
+    // ambient spawning, threat waves and the whole intensity curve. The
+    // level's OBJECTIVE decides when the layer falls; see creditLevel.
+    if (crossed && !this.levelRun) this.handleThresholdCrossed()
   }
 
   private onPanelComplete(panel: TaskPanel): void {
@@ -889,6 +981,11 @@ export class Shell {
       tone: 'success',
       speed: 2,
     })
+    // Offer the clearance to the level BEFORE re-targeting: a completed
+    // objective sweeps the board, and re-targeting into windows that are
+    // about to close wastes a frame of the player's attention.
+    this.creditLevel(panel)
+
     // Hand focus straight to the next workable panel so the player's
     // typing carries on uninterrupted instead of stalling on a finished
     // window.
@@ -1157,6 +1254,9 @@ export class Shell {
     this.fieldOp?.abort('extraction started')
     if (this.extracting || this.inFinale || this.destroyed) return
     this.extracting = true
+    // Getting out replaces the level objective outright -- two competing
+    // goals in the same bar is how the wave guard's bug happened before.
+    this.endLevel()
 
     this.heat.add(45)
     awardScore(this.state, 400)
@@ -1268,6 +1368,9 @@ export class Shell {
     if (this.destroyed || this.inFinale) return
     this.reverseHack?.destroy()
     this.reverseHack = null
+    // The contract is gone; a FIND LOG still counting toward an objective
+    // nobody can finish would sit over the ending banner.
+    this.endLevel()
     this.director.clearAll()
     this.explicitTarget = null
     this.setTarget(null)
@@ -1468,6 +1571,7 @@ export class Shell {
 
     setTimeout(() => {
       this.layers.restart()
+      this.beginLevel()
       this.heat.resetAfterCountermeasure(20)
       applyLayerPalette(this.activePalettes?.[this.layers.current.id] ?? this.layers.current.palette)
       applyLayerSkin(this.layers.current.id)
@@ -1819,6 +1923,18 @@ export class Shell {
         speed: 0,
       })
       this.flashToken('SKELETON KEY', token.code)
+      // With a level running this must satisfy the OBJECTIVE, not jump the
+      // layer around it. Calling handleBreakthrough() directly was a second,
+      // invisible win condition: measured at PERIMETER, the layer fell to
+      // INTRANET with KEY SEGMENTS still reading 0/3, because a chain had
+      // granted a skeleton key into a full pouch and grantToken burns those
+      // on the spot. The token keeps its full power -- filling the
+      // objective drops the layer -- there is just one way to finish a level.
+      if (this.levelRun) {
+        this.levelRun.fulfil()
+        this.findLog?.paint()
+        this.paintLevelObjective()
+      }
       if (this.layers.isFinalLayer) {
         // At the bottom there is no next layer to drop into, so it pays out
         // as the finale instead of silently doing nothing.
@@ -1899,6 +2015,9 @@ export class Shell {
     const next = this.layers.breakthrough()
     this.deepestThisRun = next.id
     this.maybeSeedArtifact(next.id)
+    // A new depth is a new level. Deeper layers have no spec yet, so this
+    // correctly falls back to the threshold there.
+    this.beginLevel()
     this.showBreakthroughCard(next, depthIndex, bonus)
     this.breakthroughGraceUntil = this.elapsedMs + BREAKTHROUGH_GRACE_MS
 
@@ -1998,6 +2117,9 @@ export class Shell {
     this.inFinale = true
     playSfx('powerDown')
 
+    // The job is done; the FIND LOG must not sit there mid-count over the
+    // ending, and no late panel clearance may credit a level that is over.
+    this.endLevel()
     this.director.clearAll()
     this.explicitTarget = null
     this.setTarget(null)

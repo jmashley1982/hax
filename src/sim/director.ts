@@ -92,6 +92,22 @@ export class Director {
   }
 
   /**
+   * Panel types the current level actually needs.
+   *
+   * Without this a level asking for CIPHER LOCKs competes on equal terms
+   * with every other unlocked type, so the objective advances at the speed
+   * of a dice roll and the level reads as slow rather than as a task. The
+   * bias is a preference, not a filter -- the other types still spawn, so
+   * the board keeps its variety and the required tool never becomes the
+   * only thing on screen.
+   */
+  private preferred: readonly string[] = []
+
+  setPreferredTypes(types: readonly string[]): void {
+    this.preferred = types
+  }
+
+  /**
    * @param canSpawn false while the player is mid-interaction (a drag).
    *        Decay and bookkeeping still run -- only *new* panels are held
    *        back, so a window can't appear on top of the drag in progress.
@@ -126,7 +142,21 @@ export class Director {
 
     const pool = unlockedPanelTypes(this.state.layer)
     const activeTypes = this.panels.map((p) => p.id.split('-')[0] ?? '')
-    const typeId = pickPanelType(pool, activeTypes, (arr) => pick(this.rng, arr))
+    // Guarantee the level's tools are available WITHOUT letting them take
+    // the whole board. Measured before this cap: at PERIMETER, whose level
+    // wants ROUTE + CIPHER, zero PORT SCAN panels spawned in 45 seconds --
+    // panels crack fast, the board is usually below its floor, and every
+    // refill went to a missing required type. That trades "there is always
+    // a right answer" for "there is only one thing on screen", and the
+    // board showing a mix of things to do is not negotiable.
+    const liveRequired = activeTypes.filter((t) => this.preferred.includes(t)).length
+    const roomForMore = liveRequired < Math.ceil(this.desiredCount / 2)
+    const typeId = pickPanelType(
+      pool,
+      activeTypes,
+      (arr) => pick(this.rng, arr),
+      roomForMore ? this.preferred : [],
+    )
     const factory = PANEL_TYPES[typeId]
     if (!factory) return null
 

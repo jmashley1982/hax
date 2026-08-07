@@ -46,12 +46,20 @@ export const PANEL_LABELS: Record<string, string> = {
 /**
  * Bias spawns away from types already on screen, so the board shows a mix
  * of things to do rather than three identical grids.
+ *
+ * `preferred` is the current level's required tools. It is applied FIRST
+ * and only among types not already on the board, which is what keeps both
+ * halves true: the tool the objective needs turns up promptly, and the
+ * board still fills with everything else once one of each is out.
  */
 export function pickPanelType(
   pool: readonly string[],
   activeTypes: readonly string[],
   rngPick: (a: readonly string[]) => string,
+  preferred: readonly string[] = [],
 ): string {
   const unused = pool.filter((t) => !activeTypes.includes(t))
+  const wanted = unused.filter((t) => preferred.includes(t))
+  if (wanted.length > 0) return rngPick(wanted)
   return rngPick(unused.length > 0 ? unused : pool)
 }
