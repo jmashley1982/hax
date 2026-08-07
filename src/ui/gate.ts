@@ -41,8 +41,16 @@ export interface GateOptions {
    * A code an ally handed you earlier, if any. Present or not, the gate
    * always shows the code it wants: a blocking prompt you cannot answer is
    * a wall, not a challenge.
+   *
+   * What it buys is the SHORTCUT below, not the answer -- the answer was
+   * never withheld. The scrim is nearly opaque and covers the rail, so a
+   * message pinned in the messenger cannot be read once the gate is up;
+   * "you already have the key" therefore has to be something the gate
+   * itself offers, or it is a label and nothing more.
    */
   knownCode?: string | null
+  /** Who handed it over. Named on the shortcut so the credit is theirs. */
+  knownFrom?: string | null
   line: (text: string, tone: LineTone) => void
   onResolve: (ok: boolean) => void
 }
@@ -173,10 +181,11 @@ export class Gate {
     // makes reading the messenger worth something rather than decorative.
     this.code = (this.opts.knownCode ?? hex(this.opts.rng, 3)).toUpperCase()
 
+    const from = this.opts.knownFrom
     const label = document.createElement('div')
     label.className = 'gate__label'
     label.textContent = this.opts.knownCode
-      ? 'YOUR CONTACT ALREADY GAVE YOU THIS. TYPE IT.'
+      ? `${(from ?? 'YOUR CONTACT').toUpperCase()} SENT YOU THIS KEY EARLIER`
       : 'TYPE THIS EXACTLY'
 
     const codeEl = document.createElement('div')
@@ -192,6 +201,24 @@ export class Gate {
     }
 
     body.append(label, codeEl, this.slotsEl)
+
+    // The shortcut. Having the credential in hand means you do not have to
+    // stand at their prompt and type it under a clock -- one click and you
+    // are through. That is what makes reading the messenger a real edge
+    // rather than flavour, and it is the whole reason the ally coupling
+    // exists. Typing it out still works, for anyone who missed the message.
+    if (this.opts.knownCode) {
+      const use = document.createElement('button')
+      use.type = 'button'
+      use.className = 'gate__usekey'
+      use.textContent = `USE ${(from ?? 'CONTACT').toUpperCase()}'S KEY`
+      use.addEventListener('click', () => {
+        if (this.done) return
+        this.opts.line(`>> replayed ${from ?? 'a contact'}'s credential -- straight through`, 'success')
+        this.finish(true)
+      })
+      body.appendChild(use)
+    }
   }
 
   private onKey(e: KeyboardEvent): void {

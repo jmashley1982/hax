@@ -131,6 +131,27 @@
   color: var(--accent-2);
 }
 
+/* -- pinned intel: a credential you were handed, held until it is used --
+
+   Distinct from both chatter and offers on purpose. Chatter scrolls, an
+   offer is a decision on a clock; this is a fact you are meant to still
+   have in five panels' time. Same type size as the log (never smaller --
+   that was the "nearly invisible" defect), on an opaque well. */
+
+.msgr__intel:empty {
+  display: none;
+}
+
+.msgr__intel {
+  padding: 6px 7px;
+  border-top: 1px solid var(--ok);
+  background: var(--bg-deep);
+  color: var(--ok);
+  font-size: 11px;
+  line-height: 1.45;
+  letter-spacing: 0.04em;
+}
+
 /* -- an offer on the table -- */
 
 .msgr__offer:empty {

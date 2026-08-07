@@ -87,6 +87,7 @@ export class Messenger {
   private el: HTMLElement
   private rosterEl: HTMLElement
   private logEl: HTMLElement
+  private intelEl: HTMLElement
   private offerEl: HTMLElement
   private unreadEl!: HTMLElement
   private unread = 0
@@ -122,10 +123,13 @@ export class Messenger {
     this.logEl = document.createElement('div')
     this.logEl.className = 'msgr__log'
 
+    this.intelEl = document.createElement('div')
+    this.intelEl.className = 'msgr__intel'
+
     this.offerEl = document.createElement('div')
     this.offerEl.className = 'msgr__offer'
 
-    this.el.append(head, this.rosterEl, this.logEl, this.offerEl)
+    this.el.append(head, this.rosterEl, this.logEl, this.intelEl, this.offerEl)
     this.el.addEventListener('pointerenter', this.markRead)
     this.el.addEventListener('pointerdown', this.markRead)
     mount.appendChild(this.el)
@@ -244,6 +248,41 @@ export class Messenger {
   private markRead = (): void => {
     this.unread = 0
     this.unreadEl.textContent = ''
+  }
+
+  /**
+   * A contact hands you something you will need shortly, and it STAYS.
+   *
+   * Ordinary chatter is evicted from the log at 14 lines, so a credential
+   * delivered as a normal message could be scrolled away by small talk
+   * before the gate that wants it arrives -- turning the one mechanically
+   * load-bearing message in the game into a coin flip on how talkative the
+   * roster happened to be. This pins it above the offer slot instead.
+   *
+   * Returns the handle it came from, or null if the roster is somehow
+   * empty -- the caller must not promise the player a key nobody sent.
+   */
+  pinIntel(text: string): string | null {
+    // Drag someone online if nobody is, exactly as raiseOffer does: intel
+    // that cannot arrive is worse than no roster at all.
+    let who: Buddy | undefined = pick(this.rng, this.online())
+    if (!who) {
+      who = this.buddies[0]
+      if (who) {
+        who.online = true
+        this.paintRoster()
+      }
+    }
+    if (!who) return null
+
+    this.say(who.handle, text)
+    this.intelEl.textContent = `${who.handle} :: ${text}`
+    return who.handle
+  }
+
+  /** The pinned intel has been used or has expired with its gate. */
+  clearIntel(): void {
+    this.intelEl.textContent = ''
   }
 
   /**

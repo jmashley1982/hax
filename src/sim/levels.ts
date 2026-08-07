@@ -249,6 +249,24 @@ export class LevelRun {
   }
 
   /**
+   * The next gate still ahead of us, WITHOUT consuming it.
+   *
+   * The ally coupling needs to know what is coming before it is due -- a
+   * contact who hands you a key at the same instant the prompt appears has
+   * not helped you. Gates are listed in ascending `atFound`, and anything
+   * already behind the current count can no longer fire, so the first
+   * unfired gate at or after `found` is the one to warn about.
+   */
+  peekGate(): GateSpec | null {
+    for (const g of this.spec.gates) {
+      if (this.firedGates.has(g.atFound)) continue
+      if (g.atFound < this.found) continue
+      return g
+    }
+    return null
+  }
+
+  /**
    * A panel of type `typeId` was cleared.
    *
    * Returns whether it counted, and optionally why not. "Why not" matters:

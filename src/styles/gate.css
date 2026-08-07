@@ -265,6 +265,39 @@
   justify-content: center;
 }
 
+/* The ally shortcut. Deliberately the friendliest thing on a red screen --
+   it is the payoff for having read the messenger, and it should look like
+   a way out rather than another demand. */
+.gate__usekey {
+  display: block;
+  width: 100%;
+  margin-top: 0.9rem;
+  background: var(--bg-deep);
+  border: 2px solid var(--ok);
+  color: var(--ok);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  padding: 0.6rem 0.7rem;
+  min-height: 42px;
+  cursor: pointer;
+  animation: gate-usekey-pulse 1400ms ease-in-out infinite;
+}
+
+.gate__usekey:hover {
+  background: var(--ok);
+  color: var(--bg-deep);
+}
+
+@keyframes gate-usekey-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  50% { box-shadow: 0 0 20px -4px var(--ok); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gate__usekey { animation: none; }
+}
+
 .gate__hop {
   background: var(--bg-deep);
   border: 1px solid var(--panel-edge);

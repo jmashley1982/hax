@@ -2,7 +2,7 @@ import { store } from '@/core/store'
 import { playSfx } from '@/audio/sounds'
 import { audio } from '@/audio/engine'
 import { clock } from '@/core/clock'
-import { mulberry32, hashSeed, int, type Rng } from '@/core/rng'
+import { mulberry32, hashSeed, hex, int, type Rng } from '@/core/rng'
 import { LAYER_ORDER, type GameState } from '@/core/state'
 import { levelSpec, LevelRun, type GateKind } from '@/sim/levels'
 import { Gate } from '@/ui/gate'
@@ -62,6 +62,15 @@ import { DesktopIcons } from './desktop/icons'
 import type { TaskPanel } from './panels/panel'
 
 const GATE_DEFER_MS = 350
+
+/**
+ * How often a contact gets you the key before a PASSWORD gate lands.
+ *
+ * Above half on purpose: the messenger has to pay off often enough that
+ * watching it is a habit rather than a lottery. Below one on purpose: the
+ * gate has to still be a gate.
+ */
+const TIP_OFF_CHANCE = 0.55
 const BREAKTHROUGH_GRACE_MS = 2500
 
 /** How a contract ended, handed back to the App for career bookkeeping. */
@@ -201,6 +210,23 @@ export class Shell {
    * keystroke reaches the board.
    */
   private gate: Gate | null = null
+  /**
+   * A session key a contact handed over ahead of a PASSWORD gate, and who
+   * sent it. Held on the Shell rather than in the LevelRun because it is
+   * the messenger's promise, not the objective's -- and it has to be
+   * revoked if the level it was raised for goes away.
+   */
+  private tippedCode: string | null = null
+  private tippedFrom: string | null = null
+  /**
+   * Gates we have already rolled the tip-off for this level, by `atFound`.
+   *
+   * The roll must happen ONCE per gate. Rolled on every milestone it would
+   * converge on "always tipped", which is the failure mode this whole
+   * chance exists to avoid -- a shortcut that is always available is not a
+   * reward for reading the messenger, it is a change to how the gate works.
+   */
+  private tipRolled = new Set<number>()
   /** The four desktop regions. Every surface mounts into one of them. */
   private desk!: DesktopLayout
   private icons!: DesktopIcons
@@ -415,6 +441,9 @@ export class Shell {
     this.director.setFindTarget(spec.kind === 'locate' ? this.contract.job.artifact : null)
     store.emit('terminal:line', { text: spec.brief(this.contract.facts), tone: 'success', speed: 2 })
     this.paintLevelObjective()
+    // A gate one item in is worth warning about from the level's first
+    // frame -- that is still a full panel-clear of lead.
+    this.maybeTipOffGate()
     // A gate at `atFound: 0` is an OPENING gate -- they noticed you the
     // moment you arrived. Milestones only fire on an increment, so without
     // this such a gate could never happen, and a level whose objective is a
@@ -433,6 +462,12 @@ export class Shell {
     this.findLog?.destroy()
     this.findLog = null
     this.levelRun = null
+    // The key was for THIS level's gate. Carrying it into the next level
+    // would hand a free pass to a gate nobody warned you about, which is
+    // the mirror image of the bug where an old level's gate slammed up on
+    // a new one.
+    this.clearTipOff()
+    this.resetTipRolls()
     this.director.setPreferredTypes([])
     this.director.setFindTarget(null)
   }
@@ -451,7 +486,79 @@ export class Shell {
    */
   private onLevelMilestone(): void {
     this.findLog?.flash()
+    this.maybeTipOffGate()
     this.maybeOpenGate()
+  }
+
+  /**
+   * A contact hands you the key for the PASSWORD gate that is coming.
+   *
+   * This is the counterweight to the operator taunts: their channel
+   * threatens, this one arms you. It is the only thing in the game that
+   * makes reading the messenger pay, and it is why the traps read as fair
+   * rather than arbitrary at this difficulty.
+   *
+   * The lead time is ONE OBJECTIVE ITEM -- roughly a panel-clear, 10-25s of
+   * play -- and not a wall-clock delay. Everything else this round moved
+   * off timers onto objective progress for exactly one reason: a warning
+   * that arrives on a timer is indistinguishable from the "random and
+   * inconsequential" the whole round exists to remove. A warning that
+   * arrives because you just found something is a consequence.
+   *
+   * Only PASSWORD gates. The other four kinds are dexterity, not knowledge
+   * -- there is nothing an ally could hand you that would help with them.
+   */
+  private maybeTipOffGate(): void {
+    const run = this.levelRun
+    // One tip at a time. A second key raised while the first is unspent
+    // would overwrite the code the player is holding, which is worse than
+    // never having sent one.
+    if (!run || this.tippedCode) return
+    const next = run.peekGate()
+    if (!next || next.kind !== 'password') return
+    // Too early is as useless as too late -- a key handed over three panels
+    // out has been forgotten by the time the prompt lands. And an OPENING
+    // gate (atFound 0, fired the instant the level starts) cannot be warned
+    // about at all: the tip and the prompt would land in the same beat.
+    if (next.atFound <= run.found) return
+    if (run.found < next.atFound - 1) return
+
+    // Not every time. A contact who always comes through turns the PASSWORD
+    // gate into a button you press, and a gate that is never actually
+    // played is worse than no gate. Rolled once per gate, off the seeded
+    // rng so `?seed=` still reproduces a run exactly.
+    if (this.tipRolled.has(next.atFound)) return
+    this.tipRolled.add(next.atFound)
+    if (this.rng() > TIP_OFF_CHANCE) return
+
+    const code = hex(this.rng, 3).toUpperCase()
+    const from = this.messenger.pinIntel(
+      `heads up -- ${this.target.org} is rolling session keys. the next one is ${code}. i will hold it for you.`,
+    )
+    // pinIntel returns null only if the roster is empty, which cannot
+    // happen today -- but promising a key nobody sent would leave the gate
+    // offering a shortcut credited to no one.
+    if (!from) return
+    this.tippedCode = code
+    this.tippedFrom = from
+    playSfx('token')
+    store.emit('terminal:line', {
+      text: `<< ${from} :: session key ${code} -- held`,
+      tone: 'success',
+      speed: 0,
+    })
+  }
+
+  /** The key is spent, stale, or its level is gone. */
+  private clearTipOff(): void {
+    this.tippedCode = null
+    this.tippedFrom = null
+    this.messenger?.clearIntel()
+  }
+
+  /** Fresh rolls for a fresh level. */
+  private resetTipRolls(): void {
+    this.tipRolled.clear()
   }
 
   /**
@@ -492,14 +599,16 @@ export class Shell {
 
   private openGate(kind: GateKind): void {
     this.shellEl.classList.add('is-gated')
+    const tipped = kind === 'password' && this.tippedCode !== null
+    const prompt: Record<GateKind, string> = {
+      password: 'TYPE THE CODE -- nothing moves until you do',
+      purge: 'BIN THE BAD FILES -- now',
+      rekey: 'TYPE EACH GLYPH AS IT LIGHTS',
+      trace: 'CUT THE HOPS IN ORDER',
+      route: 'PICK A ROUTE -- read the intel',
+    }
     this.objective.set(
-      {
-        password: 'TYPE THE CODE -- nothing moves until you do',
-        purge: 'BIN THE BAD FILES -- now',
-        rekey: 'TYPE EACH GLYPH AS IT LIGHTS',
-        trace: 'CUT THE HOPS IN ORDER',
-        route: 'PICK A ROUTE -- read the intel',
-      }[kind],
+      tipped ? `${(this.tippedFrom ?? 'A CONTACT').toUpperCase()} HAS THE KEY -- USE IT` : prompt[kind],
     )
     this.gate = new Gate({
       kind,
@@ -508,10 +617,11 @@ export class Shell {
       mount: this.shellEl,
       // Generous: the drama is that everything stopped, not the clock.
       limitMs: { password: 12_000, purge: 14_000, rekey: 13_000, trace: 11_000, route: 10_000 }[kind],
-      // The ally coupling -- a contact handing you this code 5-15s before
-      // the gate arrives -- lands with the remaining gate kinds. Gate
-      // already accepts it; nothing supplies one yet.
-      knownCode: null,
+      // If a contact tipped you off an objective item ago, this IS that
+      // key, and the gate offers to replay it instead of making you type
+      // under the clock. Only a PASSWORD gate can consume one.
+      knownCode: kind === 'password' ? this.tippedCode : null,
+      knownFrom: kind === 'password' ? this.tippedFrom : null,
       line: (text, tone) => store.emit('terminal:line', { text, tone, speed: 0 }),
       onResolve: (ok) => this.resolveGate(ok),
     })
@@ -527,6 +637,9 @@ export class Shell {
   private resolveGate(ok: boolean): void {
     this.gate = null
     this.shellEl.classList.remove('is-gated')
+    // Spent either way: the key was for the prompt that just closed, and a
+    // leftover shortcut would make the level's second gate free.
+    this.clearTipOff()
     if (ok) {
       this.integrity.repair(INTEGRITY_GAIN.waveRepelled)
       this.heat.add(-12)
