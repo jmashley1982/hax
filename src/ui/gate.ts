@@ -27,7 +27,8 @@ import type { LineTone } from '@/core/events'
  * up.
  */
 
-export type GateKind = 'password' | 'purge'
+export type { GateKind } from '@/sim/levels'
+import type { GateKind } from '@/sim/levels'
 
 export interface GateOptions {
   kind: GateKind
@@ -47,6 +48,24 @@ export interface GateOptions {
 }
 
 const CORRUPT_TELLS = ['CHECKSUM MISMATCH', 'SIG: INVALID', 'DOUBLE EXT', 'SIZE ANOMALY']
+const GLYPHS = '0123456789ABCDEF'.split('')
+/** Route tells, consistent so they can be learned rather than guessed. */
+const SAFE_TELLS = [
+  'cert expired 2 years ago',
+  'unpatched CVE-2019-0708',
+  'default creds still set',
+  'abandoned subdomain, no logging',
+  'verbose stack traces on error',
+  'legacy protocol, no MFA',
+]
+const TRAP_TELLS = [
+  'patched this week',
+  'EDR agent reporting',
+  'canary token in the path',
+  'MFA enforced, hardware key',
+  'suspiciously wide open',
+  'honeypot banner mismatch',
+]
 const CLEAN_NAMES = ['ledger', 'roster', 'manifest', 'backup', 'export', 'notes', 'index', 'audit']
 const EXTS = ['db', 'sql', 'csv', 'pem', 'tar', 'pdf']
 
@@ -66,6 +85,15 @@ export class Gate {
   /** purge */
   private badLeft = 0
 
+  /** rekey: the glyph sequence, and which slot is lit right now. */
+  private rekeyGlyphs: string[] = []
+  private rekeyOrder: number[] = []
+  private rekeyAt = 0
+
+  /** trace: hops left to cut, in order. */
+  private traceHops: HTMLElement[] = []
+  private traceAt = 0
+
   constructor(private opts: GateOptions) {
     this.remainingMs = opts.limitMs
 
@@ -77,17 +105,24 @@ export class Gate {
 
     const head = document.createElement('div')
     head.className = 'gate__head'
-    head.textContent =
-      opts.kind === 'password'
-        ? `!! ${opts.org.toUpperCase()} LOCKED THIS SESSION`
-        : `!! ${opts.org.toUpperCase()} IS PUSHING FILES AT YOU`
+    const org = opts.org.toUpperCase()
+    head.textContent = {
+      password: `!! ${org} LOCKED THIS SESSION`,
+      purge: `!! ${org} IS PUSHING FILES AT YOU`,
+      rekey: `!! ${org} ROLLED THE SESSION KEY`,
+      trace: `!! ${org} IS TRACING YOU RIGHT NOW`,
+      route: `!! YOUR ROUTE JUST DIED`,
+    }[opts.kind]
 
     const sub = document.createElement('div')
     sub.className = 'gate__sub'
-    sub.textContent =
-      opts.kind === 'password'
-        ? 'everything is held until you re-key the session'
-        : 'their payload is uploading itself -- bin the bad ones'
+    sub.textContent = {
+      password: 'everything is held until you re-key the session',
+      purge: 'their payload is uploading itself -- bin the bad ones',
+      rekey: 'type each glyph as it lights -- not in order',
+      trace: 'cut the hops in sequence before it reaches you',
+      route: 'pick another way in. read the intel.',
+    }[opts.kind]
 
     const body = document.createElement('div')
     body.className = 'gate__body'
@@ -106,7 +141,10 @@ export class Gate {
     opts.mount.appendChild(this.el)
 
     if (opts.kind === 'password') this.buildPassword(body)
-    else this.buildPurge(body)
+    else if (opts.kind === 'purge') this.buildPurge(body)
+    else if (opts.kind === 'rekey') this.buildRekey(body)
+    else if (opts.kind === 'trace') this.buildTrace(body)
+    else this.buildRoute(body)
 
     // Capture phase, like the lockout: the board's own listeners must not
     // also see these keys, or a gate meant to stop everything would still
@@ -117,9 +155,13 @@ export class Gate {
     playSfx('alarm')
     this.paint()
     opts.line(
-      opts.kind === 'password'
-        ? `!!!! SESSION LOCKED -- re-key with ${this.code} to continue`
-        : '!!!! INBOUND PAYLOAD -- purge the corrupted files to continue',
+      {
+        password: `!!!! SESSION LOCKED -- re-key with ${this.code} to continue`,
+        purge: '!!!! INBOUND PAYLOAD -- purge the corrupted files to continue',
+        rekey: '!!!! KEY ROLLED -- re-enter the glyphs as they light',
+        trace: '!!!! LIVE TRACE -- cut the hops before it lands',
+        route: '!!!! ROUTE DEAD -- pick another way in',
+      }[opts.kind],
       'danger',
     )
   }
@@ -157,6 +199,7 @@ export class Gate {
     // Swallow everything: the whole point is that nothing else gets input.
     e.preventDefault()
     e.stopPropagation()
+    if (this.opts.kind === 'rekey') return this.onRekeyKey(e)
     if (this.opts.kind !== 'password') return
 
     const want = this.code[this.typed.length]
@@ -245,6 +288,168 @@ export class Gate {
     playSfx('error')
     this.remainingMs = Math.max(600, this.remainingMs - 2500)
     this.opts.line('-- that one was clean. seconds gone.', 'warning')
+  }
+
+  // -- rekey -------------------------------------------------------------
+
+  /**
+   * The lockout's re-key pad, promoted to a gate.
+   *
+   * Different from PASSWORD in the one way that matters: the slots light
+   * in a RANDOM order rather than left to right, so you cannot type the
+   * code as a word. You have to watch. Same four hex glyphs, same "a wrong
+   * key only shakes" rule -- it is attention, not difficulty.
+   */
+  private buildRekey(body: HTMLElement): void {
+    const { rng } = this.opts
+    this.rekeyGlyphs = Array.from({ length: 4 }, () => pick(rng, GLYPHS))
+    this.rekeyOrder = shuffle(rng, [0, 1, 2, 3])
+
+    const label = document.createElement('div')
+    label.className = 'gate__label'
+    label.textContent = 'TYPE THE LIT GLYPH'
+
+    this.slotsEl = document.createElement('div')
+    this.slotsEl.className = 'gate__slots'
+    for (const g of this.rekeyGlyphs) {
+      const s = document.createElement('span')
+      s.className = 'gate__slot'
+      s.textContent = g
+      this.slotsEl.appendChild(s)
+    }
+    body.append(label, this.slotsEl)
+    this.litRekeySlot()
+  }
+
+  private litRekeySlot(): void {
+    if (!this.slotsEl) return
+    const idx = this.rekeyOrder[this.rekeyAt]
+    for (let i = 0; i < this.slotsEl.children.length; i++) {
+      this.slotsEl.children[i]?.classList.toggle('is-lit', i === idx)
+    }
+  }
+
+  private onRekeyKey(e: KeyboardEvent): void {
+    const idx = this.rekeyOrder[this.rekeyAt]
+    if (idx === undefined) return
+    const want = this.rekeyGlyphs[idx]
+    if (!want) return
+    if (e.key.toUpperCase() !== want) {
+      playSfx('error')
+      this.slotsEl?.classList.remove('is-wrong')
+      void this.slotsEl?.offsetWidth
+      this.slotsEl?.classList.add('is-wrong')
+      return
+    }
+    const slot = this.slotsEl?.children[idx] as HTMLElement | undefined
+    slot?.classList.add('is-set')
+    slot?.classList.remove('is-lit')
+    this.rekeyAt += 1
+    if (this.rekeyAt >= this.rekeyOrder.length) this.finish(true)
+    else this.litRekeySlot()
+  }
+
+  // -- trace -------------------------------------------------------------
+
+  /**
+   * Their trace, drawn as the hop chain it is. Cut them in order.
+   *
+   * Reuses NODE PATH's whole idea -- only the next hop counts, a wrong
+   * click just shudders -- because the player has already learned it, and
+   * a blocking prompt is the worst possible place to teach a new verb.
+   */
+  private buildTrace(body: HTMLElement): void {
+    const { rng } = this.opts
+    const label = document.createElement('div')
+    label.className = 'gate__label'
+    label.textContent = 'CUT THE HOPS IN ORDER -- NEAREST FIRST'
+
+    const chain = document.createElement('div')
+    chain.className = 'gate__chain'
+    const hops = int(rng, 4, 5)
+    for (let i = 0; i < hops; i++) {
+      const node = document.createElement('button')
+      node.className = 'gate__hop'
+      node.textContent = `${int(rng, 10, 250)}.${int(rng, 0, 255)}`
+      node.addEventListener('click', () => this.cutHop(i))
+      this.traceHops.push(node)
+      chain.appendChild(node)
+    }
+    body.append(label, chain)
+    this.markNextHop()
+  }
+
+  private markNextHop(): void {
+    this.traceHops.forEach((n, i) => n.classList.toggle('is-next', i === this.traceAt))
+  }
+
+  private cutHop(idx: number): void {
+    if (this.done) return
+    const node = this.traceHops[idx]
+    if (!node) return
+    if (idx !== this.traceAt) {
+      playSfx('error')
+      node.classList.add('is-reject')
+      setTimeout(() => node.classList.remove('is-reject'), 240)
+      return
+    }
+    node.classList.add('is-cut')
+    node.classList.remove('is-next')
+    this.traceAt += 1
+    playSfx('panelClear')
+    if (this.traceAt >= this.traceHops.length) this.finish(true)
+    else this.markNextHop()
+  }
+
+  // -- route -------------------------------------------------------------
+
+  /**
+   * The route choice §16F described and never built, finally, and blocking.
+   *
+   * The tells are FIXED lists, not adjectives sprinkled at random: a stale
+   * cert is always safe, a canary token is always a trap. That is what
+   * makes this learnable across runs instead of a coin flip -- and a coin
+   * flip that freezes the board would be the meanest thing in the game.
+   */
+  private buildRoute(body: HTMLElement): void {
+    const { rng } = this.opts
+    const label = document.createElement('div')
+    label.className = 'gate__label'
+    label.textContent = 'PICK THE WAY IN'
+
+    const list = document.createElement('div')
+    list.className = 'gate__routes'
+    const safeIdx = int(rng, 0, 2)
+    const safe = shuffle(rng, SAFE_TELLS)
+    const trap = shuffle(rng, TRAP_TELLS)
+    for (let i = 0; i < 3; i++) {
+      const good = i === safeIdx
+      const btn = document.createElement('button')
+      btn.className = 'gate__route'
+      const name = document.createElement('span')
+      name.className = 'gate__route-name'
+      name.textContent = `${pick(rng, ['vpn', 'jump', 'edge', 'mgmt', 'legacy'])}-${int(rng, 1, 19)}.${this.opts.org.toLowerCase().replace(/[^a-z]/g, '').slice(0, 9)}`
+      const tell = document.createElement('span')
+      tell.className = 'gate__route-tell'
+      tell.textContent = good ? (safe[i] ?? SAFE_TELLS[0]!) : (trap[i] ?? TRAP_TELLS[0]!)
+      btn.append(name, tell)
+      btn.addEventListener('click', () => this.takeRoute(good, btn))
+      list.appendChild(btn)
+    }
+    body.append(label, list)
+  }
+
+  private takeRoute(good: boolean, btn: HTMLElement): void {
+    if (this.done) return
+    if (good) {
+      btn.classList.add('is-good')
+      this.finish(true)
+      return
+    }
+    // A wrong route ends the gate immediately rather than letting you try
+    // again -- picking is the whole action, so a retry would make it free.
+    btn.classList.add('is-bad')
+    this.finish(false)
   }
 
   // -- clock -------------------------------------------------------------

@@ -24,6 +24,9 @@ import type { MissionFacts } from '@/content/grammar'
 
 export type ObjectiveKind = 'map' | 'breach' | 'locate' | 'assemble' | 'hold' | 'trip'
 
+/** Every blocking interrupt the game can throw at you. See ui/gate.ts. */
+export type GateKind = 'password' | 'purge' | 'rekey' | 'trace' | 'route'
+
 /**
  * A blocking interrupt, placed on the OBJECTIVE rather than on a clock.
  *
@@ -36,7 +39,7 @@ export type ObjectiveKind = 'map' | 'breach' | 'locate' | 'assemble' | 'hold' | 
 export interface GateSpec {
   /** Objective items held when this fires. */
   atFound: number
-  kind: 'password' | 'purge'
+  kind: GateKind
 }
 
 export interface LevelSpec {
@@ -57,16 +60,34 @@ export interface LevelSpec {
    * a surprise rather than an ambush.
    */
   gates: readonly GateSpec[]
+  /**
+   * A two-tool dependency: clearing `banks` produces a token, clearing
+   * `spends` consumes one to make an objective item.
+   *
+   * This started life hardcoded inside BREACH's branch of credit(). It is
+   * pulled out because it turns out to be the single most useful shape in
+   * the game -- it is what makes "different objectives require different
+   * tools" bite, since neither tool alone gets you anywhere -- and three
+   * of the six levels want it with different nouns.
+   */
+  pair?: { banks: string; spends: string; noun: string }
 }
 
 /**
- * Two levels, deliberately.
+ * Six levels, each a different SHAPE of task rather than the same task
+ * with bigger numbers -- which was the whole complaint.
  *
- * MAP proves the basic shape (a required tool, a count, a real win
- * condition). BREACH proves the part that actually answers "different
- * objectives require different tools": it needs TWO, and one feeds the
- * other. Building both before the remaining four means the model is tested
- * against its hardest case first rather than its easiest.
+ *   1 MAP       one tool, a simple count. The tutorial, without saying so.
+ *   2 BREACH    two tools, one feeding the other.
+ *   3 LOCATE    a single find, in a place you have to fly around.
+ *   4 ASSEMBLE  one tool, but three of them, under real pressure.
+ *   5 HOLD      two tools again, and the pair is inverted -- you open a
+ *               window by fighting, then use it.
+ *   6 TRIP      two tools where the second is a DRAG, and the shortest
+ *               target in the game, because the finale follows it.
+ *
+ * Gate count and gate variety climb with depth, and every level past the
+ * second introduces a gate kind the player has not seen.
  */
 const LEVEL_SPECS: Partial<Record<LayerId, LevelSpec>> = {
   surface: {
@@ -84,6 +105,7 @@ const LEVEL_SPECS: Partial<Record<LayerId, LevelSpec>> = {
     tools: ['nodePath', 'cipher'],
     target: 3,
     unit: 'KEY SEGMENTS',
+    pair: { banks: 'nodePath', spends: 'cipher', noun: 'key fragment' },
     gates: [
       { atFound: 1, kind: 'purge' },
       { atFound: 2, kind: 'password' },
@@ -91,6 +113,52 @@ const LEVEL_SPECS: Partial<Record<LayerId, LevelSpec>> = {
     label: (f, t) => `BREACH THE GATEWAY -- ${f}/${t} key segments assembled`,
     brief: () =>
       '>> LEVEL 2 :: trace a route to bank a fragment, then feed it to a CIPHER LOCK. three segments opens the gateway.',
+  },
+  core: {
+    kind: 'assemble',
+    tools: ['keyRecovery'],
+    target: 3,
+    unit: 'KEY FRAGMENTS',
+    gates: [
+      { atFound: 1, kind: 'rekey' },
+      { atFound: 2, kind: 'trace' },
+    ],
+    label: (f, t) => `REBUILD THE MASTER KEY -- ${f}/${t} fragments recovered`,
+    brief: () =>
+      '>> LEVEL 4 :: the master key is in three pieces. run KEY RECOVERY until you have all of them.',
+  },
+  kernel: {
+    kind: 'hold',
+    // The pair inverted: here you FIGHT to open a window, then use it.
+    // Same mechanic as level 2, opposite feeling.
+    tools: ['traceDefense', 'signalAlign'],
+    target: 3,
+    unit: 'HOLDS',
+    pair: { banks: 'traceDefense', spends: 'signalAlign', noun: 'clear window' },
+    gates: [
+      { atFound: 1, kind: 'route' },
+      { atFound: 2, kind: 'rekey' },
+      { atFound: 3, kind: 'trace' },
+    ],
+    label: (f, t) => `HOLD THE CHANNEL -- ${f}/${t} locks held`,
+    brief: () =>
+      '>> LEVEL 5 :: block a trace to buy a clear window, then get a SIGNAL LOCK inside it. three holds.',
+  },
+  physical: {
+    kind: 'trip',
+    tools: ['signalAlign', 'dragExfil'],
+    // Two, not three: the finale fires the moment this completes, and a
+    // long objective in front of the ending makes the ending feel late.
+    target: 2,
+    unit: 'CONTROLS TRIPPED',
+    pair: { banks: 'signalAlign', spends: 'dragExfil', noun: 'clearance' },
+    gates: [
+      { atFound: 0, kind: 'trace' },
+      { atFound: 1, kind: 'route' },
+    ],
+    label: (f, t, facts) => `TRIP ${facts.org.toUpperCase()}'S CONTROLS -- ${f}/${t}`,
+    brief: () =>
+      '>> LEVEL 6 :: align a control to earn a clearance, then spend it on a VAULT PULL. twice, and the building is yours.',
   },
   intranet: {
     kind: 'locate',
@@ -132,10 +200,10 @@ export interface LevelCredit {
 export class LevelRun {
   found = 0
   /**
-   * BREACH only: fragments banked by ROUTE TRACING and spent by CIPHER
-   * LOCK. Kept here rather than on the panels because it is a property of
-   * the LEVEL -- a route traced before the objective existed should not
-   * secretly count, and a fragment must survive the panel that produced it.
+   * Tokens banked by the pair's `banks` tool, waiting for its `spends`
+   * tool. Kept here rather than on the panels because it is a property of
+   * the LEVEL -- work done before the objective existed should not
+   * secretly count, and a token must survive the panel that produced it.
    */
   private fragments = 0
 
@@ -192,31 +260,24 @@ export class LevelRun {
     if (this.complete) return { counted: false, found: this.found }
     if (!this.spec.tools.includes(typeId)) return { counted: false, found: this.found }
 
-    if (this.spec.kind === 'breach') {
-      if (typeId === 'nodePath') {
+    const pair = this.spec.pair
+    if (pair) {
+      if (typeId === pair.banks) {
         this.fragments += 1
         return {
           counted: false,
-          note: `>> route traced -- key fragment banked (${this.fragments} in hand)`,
+          note: `>> ${pair.noun} banked (${this.fragments} in hand)`,
           found: this.found,
         }
       }
-      // cipher
       if (this.fragments <= 0) {
         return {
           counted: false,
-          note: '-- cipher aligned, but you have no fragment to feed it. trace a ROUTE first.',
+          note: `-- nothing to spend. you need a ${pair.noun} first.`,
           found: this.found,
         }
       }
       this.fragments -= 1
-      this.found += 1
-      this.onMilestone(this.found, this.spec.target)
-      return {
-        counted: true,
-        note: `>> KEY SEGMENT ${this.found}/${this.spec.target} assembled`,
-        found: this.found,
-      }
     }
 
     this.found += 1

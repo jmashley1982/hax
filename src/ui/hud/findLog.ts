@@ -1,6 +1,7 @@
 import type { LevelRun } from '@/sim/levels'
 import type { WindowManager } from '@/ui/windows/manager'
 import type { Win } from '@/ui/windows/window'
+import { PANEL_LABELS } from '@/ui/panels/registry'
 
 /**
  * FIND LOG -- what this level needs, against what you have.
@@ -69,16 +70,19 @@ export class FindLog {
 
     this.rowsEl.append(pips, count)
 
-    // Only the two-tool level has anything in hand, and showing an empty
-    // "0 fragments" row on a level that has no fragments would read as a
-    // mechanic the player is failing to use.
-    if (this.run.spec.kind === 'breach') {
+    // Only a two-tool level has anything in hand, and showing an empty
+    // "0 in hand" row on a level with no pair would read as a mechanic the
+    // player is failing to use. The nouns come from the spec so this reads
+    // correctly on all three of them.
+    const pair = this.run.spec.pair
+    if (pair) {
       const held = document.createElement('div')
       held.className = 'findlog__held'
+      const noun = pair.noun.toUpperCase()
       held.textContent =
         this.run.held > 0
-          ? `${this.run.held} FRAGMENT${this.run.held === 1 ? '' : 'S'} IN HAND -- feed a CIPHER LOCK`
-          : 'NO FRAGMENT -- trace a ROUTE'
+          ? `${this.run.held} ${noun}${this.run.held === 1 ? '' : 'S'} IN HAND -- spend on ${label(pair.spends)}`
+          : `NO ${noun} -- clear a ${label(pair.banks)}`
       held.classList.toggle('is-ready', this.run.held > 0)
       this.rowsEl.appendChild(held)
     }
@@ -93,4 +97,8 @@ export class FindLog {
   destroy(): void {
     this.win.close()
   }
+}
+
+function label(typeId: string): string {
+  return PANEL_LABELS[typeId] ?? typeId.toUpperCase()
 }

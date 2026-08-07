@@ -589,3 +589,77 @@
 
 /* The boot sequence moved to styles/boot.css when it grew three acts and
    a relay chooser -- it is its own screen, not dashboard furniture. */
+
+/* ---- the arcade wall ---- */
+
+/* Three letters on the debrief, offered only when the score actually makes
+   the table. The row is banked immediately and re-banked on every edit, so
+   closing the tab from here still leaves your name on it. */
+.debrief__initials {
+  margin-top: 0.8rem;
+  border-top: 1px solid var(--panel-edge);
+  padding-top: 0.7rem;
+  text-align: center;
+}
+
+.debrief__initials-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--warn, #ffb339);
+  margin-bottom: 0.5rem;
+}
+
+.debrief__initials-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.debrief__initial {
+  width: 46px;
+  height: 54px;
+  text-align: center;
+  background: var(--bg-deep);
+  border: 2px solid var(--warn, #ffb339);
+  color: var(--fg-bright);
+  font-family: inherit;
+  font-size: 26px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.debrief__initial:focus {
+  outline: none;
+  box-shadow: 0 0 16px -2px var(--warn, #ffb339);
+}
+
+.scores {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.scores__row {
+  display: grid;
+  grid-template-columns: 2ch 3.5ch 1fr auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  color: var(--fg-dim);
+  padding: 2px 0;
+}
+
+/* First place gets the only colour on the wall. */
+.scores__row:first-child { color: var(--warn, #ffb339); }
+
+.scores__rank { opacity: 0.6; }
+.scores__initials { color: var(--fg-bright); letter-spacing: 0.16em; }
+.scores__org { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.8; }
+.scores__score { font-variant-numeric: tabular-nums; }
+
+.scores__empty {
+  font-size: 10px;
+  color: var(--fg-dim);
+  opacity: 0.7;
+}

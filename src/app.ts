@@ -109,6 +109,7 @@ export class App {
       outcome,
       integrityLeft: outcome.integrityLeft,
       elapsedMs: outcome.elapsedMs,
+      state: this.state,
       onContinue: () => {
         this.debrief = null
         saveState(this.state)

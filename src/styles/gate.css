@@ -247,3 +247,97 @@
   .gate__clock.is-close,
   .gate__slots.is-wrong { animation: none; }
 }
+
+/* -- rekey / trace / route --------------------------------------------- */
+
+/* The lit slot is the whole instruction for REKEY -- the glyphs light in a
+   random order, so "which one now" has to be unmissable. */
+.gate__slot.is-lit {
+  border-color: var(--warn, #ffb339);
+  color: var(--warn, #ffb339);
+  box-shadow: 0 0 16px -2px var(--warn, #ffb339);
+}
+
+.gate__chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.gate__hop {
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 8px 9px;
+  min-height: 38px;
+  cursor: pointer;
+}
+
+.gate__hop.is-next {
+  border-color: var(--warn, #ffb339);
+  color: var(--fg-bright);
+  animation: gate-hop-pulse 800ms ease-in-out infinite;
+}
+
+.gate__hop.is-cut {
+  border-color: var(--ok);
+  color: var(--ok);
+  text-decoration: line-through;
+  animation: none;
+}
+
+.gate__hop.is-reject { animation: gate-shake 240ms ease-out; }
+
+@keyframes gate-hop-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(0,0,0,0); }
+  50% { box-shadow: 0 0 14px -2px var(--warn, #ffb339); }
+}
+
+.gate__routes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gate__route {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--fg);
+  font-family: inherit;
+  padding: 7px 9px;
+  min-height: 42px;
+  cursor: pointer;
+}
+
+.gate__route:hover { border-color: var(--fg); }
+.gate__route.is-good { border-color: var(--ok); color: var(--ok); }
+.gate__route.is-bad { border-color: var(--danger, #ff4a4a); color: var(--danger, #ff4a4a); }
+
+.gate__route-name {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  word-break: break-all;
+}
+
+/* The tell IS the puzzle -- it must be as readable as the hostname. */
+.gate__route-tell {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--accent-2);
+}
+
+[data-layout='mobile'] .gate__hop { min-height: 44px; }
+[data-layout='mobile'] .gate__route { min-height: 52px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gate__hop.is-next { animation: none; }
+}

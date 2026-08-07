@@ -1,6 +1,9 @@
 import type { Contract } from '@/sim/contracts'
 import { sectorLabel } from '@/sim/contracts'
 import type { SessionOutcome } from '@/ui/shell'
+import type { PlayMode } from '@/core/events'
+import { initialsFrom, normalise, qualifies, submitScore } from '@/core/highScores'
+import type { GameState } from '@/core/state'
 
 /**
  * The post-contract results screen.
@@ -21,6 +24,8 @@ export interface DebriefOptions {
   integrityLeft: number
   elapsedMs: number
   onContinue: () => void
+  /** Needed for the score wall: which table, and a starting guess at the initials. */
+  state: GameState
 }
 
 interface Verdict {
@@ -120,7 +125,30 @@ export class Debrief {
     btn.textContent = 'CONTINUE'
     btn.addEventListener('click', () => this.finish())
 
-    box.append(title, sub, grade, rows, payoutBox, btn)
+    const grade2 = gradeFor(outcome, integrityLeft, contract)
+    box.append(title, sub, grade, rows, payoutBox)
+
+    // The arcade beat, and only when it is earned: offering the initials
+    // entry on a score that will not make the wall is the saddest possible
+    // version of a high-score table.
+    const mode: PlayMode = opts.state.mode
+    if (qualifies(mode, payout)) {
+      box.appendChild(
+        this.buildInitials(mode, {
+          // One id for this run, so re-submitting on each keystroke edits
+          // the row instead of adding another.
+          id: `${contract.id}-${Math.round(elapsedMs)}-${payout}`,
+          initials: initialsFrom(opts.state),
+          score: payout,
+          org: contract.facts.org,
+          layer: outcome.deepestLayer.toUpperCase(),
+          grade: grade2,
+          at: Date.now(),
+        }),
+      )
+    }
+
+    box.append(btn)
     this.el.appendChild(box)
     mount.appendChild(this.el)
 
@@ -131,6 +159,73 @@ export class Debrief {
 
   /** Extra score awarded by the payout multiplier, applied by the App. */
   payout = 0
+
+  /**
+   * Three letters, arrows or typing, exactly like the cabinet.
+   *
+   * Submitted on the first change and RE-submitted on every edit rather
+   * than on CONTINUE: a player who closes the tab from this screen still
+   * gets their row, and a row that only lands if you press the right
+   * button afterwards is a row people will lose.
+   */
+  private buildInitials(
+    mode: PlayMode,
+    entry: { id: string; initials: string; score: number; org: string; layer: string; grade: string; at: number },
+  ): HTMLElement {
+    const wrap = document.createElement('div')
+    wrap.className = 'debrief__initials'
+
+    const label = document.createElement('div')
+    label.className = 'debrief__initials-label'
+    label.textContent = 'HIGH SCORE -- ENTER YOUR INITIALS'
+
+    const row = document.createElement('div')
+    row.className = 'debrief__initials-row'
+
+    let value = normalise(entry.initials).split('')
+    const cells: HTMLInputElement[] = []
+    const commit = (): void => {
+      submitScore(mode, { ...entry, initials: value.join('') })
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const cell = document.createElement('input')
+      cell.className = 'debrief__initial'
+      cell.value = value[i] ?? 'A'
+      cell.maxLength = 1
+      cell.spellcheck = false
+      cell.autocomplete = 'off'
+      cell.setAttribute('aria-label', `initial ${i + 1}`)
+      cell.addEventListener('input', () => {
+        const ch = normalise(cell.value || 'A')[0] ?? 'A'
+        cell.value = ch
+        value[i] = ch
+        commit()
+        if (cell.value) cells[i + 1]?.focus()
+      })
+      cell.addEventListener('keydown', (e) => {
+        // Arrows cycle the letter, like a cabinet with no keyboard.
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault()
+          const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+          const at = Math.max(0, alphabet.indexOf(cell.value))
+          const next = (at + (e.key === 'ArrowUp' ? 1 : alphabet.length - 1)) % alphabet.length
+          cell.value = alphabet[next] ?? 'A'
+          value[i] = cell.value
+          commit()
+        }
+        e.stopPropagation()
+      })
+      cells.push(cell)
+      row.appendChild(cell)
+    }
+
+    // Bank the default immediately, so the row exists even if they never
+    // touch it.
+    commit()
+    wrap.append(label, row)
+    return wrap
+  }
 
   private finish(): void {
     this.el.remove()

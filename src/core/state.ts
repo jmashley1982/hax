@@ -24,6 +24,17 @@ export const LAYER_ORDER: readonly LayerId[] = [
 ]
 
 export interface GameState {
+  /**
+   * Save-format version.
+   *
+   * Exists for exactly one reason: the play-mode migration below has to be
+   * able to tell "an old save that needs remapping" from "a new save that
+   * already means what it says". Without it the migration re-ran on every
+   * load and permanently remapped CASUAL HACK to INFINITE HACK -- a player
+   * who chose the levelled game was moved onto the endless one every time
+   * they reloaded the page.
+   */
+  saveVersion: number
   seed: number
   seedLabel: string
   mode: PlayMode
@@ -46,10 +57,13 @@ export interface GameState {
 }
 
 const SAVE_KEY = 'nullstack:save:v1'
+/** Bump when a stored field changes MEANING, not merely when one is added. */
+const SAVE_VERSION = 2
 
 export function createInitialState(seedLabel?: string): GameState {
   const label = seedLabel ?? defaultSeedLabel()
   return {
+    saveVersion: SAVE_VERSION,
     seed: hashSeed(label),
     seedLabel: label,
     mode: 'casual',
@@ -124,22 +138,31 @@ export function applySavedCareer(state: GameState): void {
   // Two renames of PlayMode have shipped, so localStorage in the wild can
   // hold any of five dead values. Restoring one would index PLAY_MODES
   // with a missing key and crash on the dashboard, so map rather than
-  // trust. The mapping is by MEANING, not by name: the old 'casual' was
-  // the easy one, which is now INFINITE HACK -- restoring it as the new
-  // 'casual' would silently move a player onto a different game.
-  const MODE_MIGRATION: Record<string, PlayMode> = {
-    infinite: 'infinite',
-    casual: 'infinite',
-    leet: 'casual',
-    irl: 'casual',
-    deep: 'casual',
-    // Pre-rework input modes.
-    hybrid: 'casual',
-    chaos: 'infinite',
-    intent: 'casual',
+  // trust. The mapping is by MEANING, not by name: the OLD 'casual' was
+  // the easy mode, which is now INFINITE HACK.
+  //
+  // Gated on the save version, and that gate is the whole point. Applied
+  // unconditionally it also remapped the NEW 'casual' -- so choosing
+  // CASUAL HACK, then reloading, silently put you in INFINITE HACK, with
+  // its own separate high-score table, forever.
+  const CURRENT: readonly string[] = ['infinite', 'casual', 'deep']
+  if ((saved.saveVersion ?? 1) >= SAVE_VERSION) {
+    if (CURRENT.includes(saved.mode as string)) state.mode = saved.mode
+  } else {
+    const MODE_MIGRATION: Record<string, PlayMode> = {
+      infinite: 'infinite',
+      casual: 'infinite',
+      leet: 'casual',
+      irl: 'casual',
+      deep: 'casual',
+      // Pre-rework input modes.
+      hybrid: 'casual',
+      chaos: 'infinite',
+      intent: 'casual',
+    }
+    const migrated = MODE_MIGRATION[saved.mode as string]
+    if (migrated) state.mode = migrated
   }
-  const migrated = MODE_MIGRATION[saved.mode as string]
-  if (migrated) state.mode = migrated
   if (saved.theme) state.theme = saved.theme
   // Guarded like everything else here: a save written before sound existed
   // parses fine and leaves this `undefined`, which would silently mute a

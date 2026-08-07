@@ -4,7 +4,7 @@ import { audio } from '@/audio/engine'
 import { clock } from '@/core/clock'
 import { mulberry32, hashSeed, int, type Rng } from '@/core/rng'
 import { LAYER_ORDER, type GameState } from '@/core/state'
-import { levelSpec, LevelRun } from '@/sim/levels'
+import { levelSpec, LevelRun, type GateKind } from '@/sim/levels'
 import { Gate } from '@/ui/gate'
 import { FindLog } from '@/ui/hud/findLog'
 import { InputPipeline } from '@/core/input'
@@ -26,7 +26,7 @@ import { ContentEngine } from '@/content'
 import type { MissionFacts } from '@/content/grammar'
 import type { LayerId } from '@/core/state'
 import type { LayerDef, LayerPalette } from '@/sim/layers'
-import type { Contract } from '@/sim/contracts'
+import { generateContracts, type Contract } from '@/sim/contracts'
 import { CrtOverlay } from '@/fx/crt'
 import { Terminal } from './terminal'
 import { Prompt } from './prompt'
@@ -184,6 +184,8 @@ export class Shell {
    * other about how many windows existed.
    */
   private budget: BoardBudget
+  /** How many targets this endless session has burned through. */
+  private rollCount = 0
 
   /**
    * CASUAL HACK only. The level's objective and how far along it is; null
@@ -488,10 +490,16 @@ export class Shell {
     }, GATE_DEFER_MS)
   }
 
-  private openGate(kind: 'password' | 'purge'): void {
+  private openGate(kind: GateKind): void {
     this.shellEl.classList.add('is-gated')
     this.objective.set(
-      kind === 'password' ? 'TYPE THE CODE -- nothing moves until you do' : 'BIN THE BAD FILES -- now',
+      {
+        password: 'TYPE THE CODE -- nothing moves until you do',
+        purge: 'BIN THE BAD FILES -- now',
+        rekey: 'TYPE EACH GLYPH AS IT LIGHTS',
+        trace: 'CUT THE HOPS IN ORDER',
+        route: 'PICK A ROUTE -- read the intel',
+      }[kind],
     )
     this.gate = new Gate({
       kind,
@@ -499,7 +507,7 @@ export class Shell {
       rng: this.rng,
       mount: this.shellEl,
       // Generous: the drama is that everything stopped, not the clock.
-      limitMs: kind === 'password' ? 12_000 : 14_000,
+      limitMs: { password: 12_000, purge: 14_000, rekey: 13_000, trace: 11_000, route: 10_000 }[kind],
       // The ally coupling -- a contact handing you this code 5-15s before
       // the gate arrives -- lands with the remaining gate kinds. Gate
       // already accepts it; nothing supplies one yet.
@@ -2301,6 +2309,8 @@ export class Shell {
       speed: 1,
     })
     this.showEndingBanner(verdict)
+    // INFINITE HACK does not have endings, it has targets.
+    if (this.rollOverToNextTarget('BREACH COMPLETE')) return
     this.endContract('completed')
   }
 
@@ -2362,6 +2372,73 @@ export class Shell {
     if (this.destroyed) return
     store.emit('terminal:line', { text: '>> SESSION ABORTED -- disconnecting', tone: 'warning', speed: 0 })
     this.finishSession('aborted')
+  }
+
+  /**
+   * INFINITE HACK never ends: instead of the debrief, roll into a fresh
+   * target and keep going.
+   *
+   * The board, the depth, the heat and the palette all reset, but the
+   * SCORE does not -- that is the whole point of an endless mode, and it
+   * is what a session's final number means when you finally press ESC.
+   * Returns true if it took the ending.
+   */
+  private rollOverToNextTarget(reason: string): boolean {
+    if (!this.mode.endless || this.destroyed) return false
+
+    this.closeGate()
+    this.endLevel()
+    this.director.clearAll()
+    this.explicitTarget = null
+    this.setTarget(null)
+    this.budget.reset()
+    for (const t of this.activeThreats) t.win.close()
+    this.activeThreats = []
+    this.reverseHack?.destroy()
+    this.reverseHack = null
+    this.manhunt?.destroy()
+    this.manhunt = null
+    this.fieldOp?.abort('moving on')
+
+    // A genuinely different target, derived from how many you have already
+    // burned through, so the roll-over is a new place rather than a reset.
+    this.rollCount += 1
+    const next = generateContracts(this.state.seed + this.rollCount * 6151 + 29)[0]
+    if (next) {
+      this.contract = next
+      this.target = next.facts
+      this.content.setFacts(next.facts)
+      this.activePalettes = brandLayerPalettes(next.brandColor)
+      this.targetSite?.update(next)
+    }
+
+    this.layers.restart()
+    this.deepestThisRun = 'surface'
+    this.heat.resetAfterCountermeasure(15)
+    this.integrity.repair(40)
+    this.inFinale = false
+    this.extracting = false
+    this.ejecting = false
+    this.artifactSeeded = false
+    this.fieldOpFired = false
+
+    applyLayerPalette(this.activePalettes?.surface ?? this.layers.current.palette)
+    applyLayerSkin('surface')
+    this.targetSite?.setDepth('surface')
+    this.renderStatusLeft()
+    this.breakthroughGraceUntil = this.elapsedMs + BREAKTHROUGH_GRACE_MS
+
+    store.emit('terminal:line', {
+      text: `==== ${reason} :: MOVING ON TO ${this.target.org.toUpperCase()} ====`,
+      tone: 'success',
+      speed: 1,
+    })
+    this.objective.setJob(`INFINITE :: ${this.target.org} -- keep going, ESC to stop`)
+    this.later(() => {
+      for (let i = 0; i < this.layers.current.panelFloor; i++) this.director.spawn()
+      this.refreshTarget()
+    }, 1400)
+    return true
   }
 
   private endContract(kind: SessionOutcome['kind'], delayMs = 4200): void {

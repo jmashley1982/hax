@@ -4,6 +4,7 @@ import { generateContracts, sectorLabel, type Contract } from '@/sim/contracts'
 import { mulberry32, int, pick } from '@/core/rng'
 import { PLAY_MODES, PLAY_MODE_ORDER } from '@/core/progress'
 import { audio } from '@/audio/engine'
+import { topScores } from '@/core/highScores'
 
 /**
  * The workstation dashboard -- the game's home base (plan §16A).
@@ -42,6 +43,7 @@ export class Dashboard {
   private boardEl!: HTMLElement
   private detailEl!: HTMLElement
   private startBtn!: HTMLButtonElement
+  private scoresEl: HTMLElement | null = null
 
   constructor(mount: HTMLElement, private state: GameState, private opts: DashboardOptions) {
     // A fresh board every visit, per "generated anew on every new start".
@@ -86,7 +88,12 @@ export class Dashboard {
     // --- left column: operator + settings + log
     const left = document.createElement('div')
     left.className = 'dash__col dash__col--left'
-    left.append(this.buildOperatorPanel(), this.buildSettingsPanel(), this.buildLogPanel())
+    left.append(
+      this.buildOperatorPanel(),
+      this.buildSettingsPanel(),
+      this.buildScorePanel(),
+      this.buildLogPanel(),
+    )
 
     // --- right column: the contract board + detail
     const right = document.createElement('div')
@@ -191,6 +198,8 @@ export class Dashboard {
         btn.addEventListener('click', () => {
           this.state.mode = id
           paintMode()
+          // The wall is per mode, so switching mode must switch the wall.
+          this.renderScores()
           saveState(this.state)
         })
       }
@@ -236,6 +245,55 @@ export class Dashboard {
 
     box.append(modeRow, modeHint, themeRow, soundRow)
     return box
+  }
+
+  /**
+   * The wall, for the mode currently selected.
+   *
+   * Rebuilt whenever the mode changes rather than showing both tables at
+   * once: INFINITE HACK and CASUAL HACK have completely different score
+   * curves, and a combined list would just be the endless mode forever.
+   */
+  private buildScorePanel(): HTMLElement {
+    const box = document.createElement('section')
+    box.className = 'dash__box'
+    box.append(boxTitle('TOP SCORES'))
+    this.scoresEl = document.createElement('div')
+    this.scoresEl.className = 'scores'
+    box.appendChild(this.scoresEl)
+    this.renderScores()
+    return box
+  }
+
+  private renderScores(): void {
+    if (!this.scoresEl) return
+    const rows = topScores(this.state.mode)
+    this.scoresEl.replaceChildren()
+    if (rows.length === 0) {
+      const empty = document.createElement('div')
+      empty.className = 'scores__empty'
+      empty.textContent = 'no runs banked in this mode yet'
+      this.scoresEl.appendChild(empty)
+      return
+    }
+    rows.forEach((r, i) => {
+      const row = document.createElement('div')
+      row.className = 'scores__row'
+      const rank = document.createElement('span')
+      rank.className = 'scores__rank'
+      rank.textContent = String(i + 1)
+      const ini = document.createElement('span')
+      ini.className = 'scores__initials'
+      ini.textContent = r.initials
+      const org = document.createElement('span')
+      org.className = 'scores__org'
+      org.textContent = `${r.org} · ${r.layer} · ${r.grade}`
+      const score = document.createElement('span')
+      score.className = 'scores__score'
+      score.textContent = String(Math.round(r.score))
+      row.append(rank, ini, org, score)
+      this.scoresEl?.appendChild(row)
+    })
   }
 
   private buildLogPanel(): HTMLElement {
