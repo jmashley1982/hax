@@ -108,7 +108,15 @@ export class Hud {
     this.tokensEl = document.createElement('div')
     this.tokensEl.className = 'tokens'
 
-    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow, intRow, this.tokensEl)
+    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow, intRow)
+    // The rack is a SIBLING of the HUD, not a child.
+    //
+    // Inside the HUD it anchored to the HUD's own box, which sits wherever
+    // the top bar's flex layout leaves it -- measured at x=451 in a 1500px
+    // window, i.e. hanging down the middle of the screen over the TARGET
+    // dossier. As a sibling it anchors to the top bar itself, so "to the
+    // side" means the actual side.
+    mountPoint.appendChild(this.tokensEl)
     mountPoint.appendChild(this.el)
 
     if (this.pouch) {

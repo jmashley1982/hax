@@ -95,6 +95,16 @@ export abstract class TaskPanel {
      * on the vault-pull panel those rows are the thing you have to drag.
      */
     span?: { cols: number; rows: number },
+    /**
+     * Whether the player may dismiss this panel unsolved.
+     *
+     * False for every panel that can be finished by mashing -- a close box
+     * on those is just a way to lose progress by accident. True only for
+     * the file-system navigator, which is the one panel that can leave you
+     * with nothing to do inside it, and which must therefore never be able
+     * to sit on the board forever.
+     */
+    closable = false,
   ) {
     this.id = id
     this.ctx = ctx
@@ -102,7 +112,7 @@ export abstract class TaskPanel {
     this.intensity = ctx.intensity
     this.titleBase = title
 
-    this.win = manager.spawn({ title, modal: false, closable: false, pinned: true, span }, 'random')
+    this.win = manager.spawn({ title, modal: false, closable, pinned: true, span }, 'random')
     this.win.el.classList.add('panel')
     this.win.el.dataset.panelId = id
 

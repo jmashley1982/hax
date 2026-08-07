@@ -677,3 +677,21 @@
 
 [data-layout='mobile'] .fsn__field { flex: 1 1 30%; }
 [data-layout='mobile'] .fsn__readout { flex: 1 1 100%; margin-top: 0; }
+
+/* Always a way back to the tree. The camera is clamped to the world now,
+   but "I am lost" is still a state a player can get into. */
+.fsn__home {
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  padding: 5px 4px;
+  min-height: 28px;
+  cursor: pointer;
+}
+
+.fsn__home:hover { border-color: var(--fg); color: var(--fg-bright); }
+
+[data-layout='mobile'] .fsn__home { min-height: 40px; flex: 1 1 100%; }

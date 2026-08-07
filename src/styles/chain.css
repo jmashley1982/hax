@@ -163,17 +163,32 @@
 
 /* ---- the token rack ---- */
 
+/*
+ * The token rack hangs off the RIGHT of the top bar, out of the flow.
+ *
+ * It used to be a normal flex child of the HUD, so earning a BYPASS or a
+ * TROJAN HORSE grew the top bar and shoved the whole work area down --
+ * "it makes the top bar extend and changes the shape of the page". Taking
+ * it out of the flow means a chip arriving can never reflow anything: it
+ * appears beside the board and the board does not move.
+ */
 .tokens {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 8px;
+  z-index: 720;
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 0.35rem;
-  align-items: center;
-  flex-wrap: wrap;
+  width: max-content;
+  max-width: 220px;
   /*
    * The HUD is `pointer-events: none` (hud.css) so its meters never eat a
-   * click meant for the board. The token rack lives inside it and is the
-   * one part that MUST be clickable -- without this the chip could not be
-   * clicked at all, and the only way to spend a token you had earned over
-   * three windows was to type its code, which nothing told you.
+   * click meant for the board. The token rack is the one part that MUST be
+   * clickable -- without this the chip could not be clicked at all, and the
+   * only way to spend a token you had earned over three windows was to type
+   * its code, which nothing told you.
    */
   pointer-events: auto;
 }

@@ -33,8 +33,8 @@ const EYE_Y = 1.55
 const FOCAL = 320
 const MOVE_PER_STEP = 0.55
 const TURN_PER_STEP = 0.09
-/** How far you can wander before the world politely stops you. */
-const BOUND = 26
+/** Margin kept around the file tree, so you can circle it but not leave it. */
+const MARGIN = 9
 
 const DIR_NAMES = [
   'archive', 'backup', 'exports', 'finance', 'hr', 'legal', 'ops', 'projects',
@@ -84,9 +84,23 @@ export class FileSystem3dPanel extends TaskPanel {
   private selected: FileBlock | null = null
   private targeted = false
   private arrowHandler: ((e: KeyboardEvent) => void) | null = null
+  /**
+   * The extent of the file tree, plus a margin.
+   *
+   * The camera used to clamp to a fixed +-26 that had nothing to do with
+   * where the world actually was, so flying forward took you straight out
+   * the back of it into empty space -- the "empty window" in the report.
+   * Computed from the geometry, so you can always see something.
+   */
+  private bounds = { minX: -12, maxX: 12, minZ: -12, maxZ: 12 }
 
   constructor(manager: WindowManager, ctx: PanelContext) {
-    super(manager, ctx, `fs3d-${hex(ctx.rng, 4)}`, 'FILE SYSTEM NAVIGATOR', { cols: 2, rows: 2 })
+    // Closable, uniquely among task panels. Every other panel can be
+    // finished by mashing; this one cannot, so without a way out an
+    // unsolved navigator sits on the board for the rest of the run --
+    // reported exactly that way: "it never goes away, just an empty window
+    // on the page for the rest of the game".
+    super(manager, ctx, `fs3d-${hex(ctx.rng, 4)}`, 'FILE SYSTEM NAVIGATOR', { cols: 2, rows: 2 }, true)
     this.init()
   }
 
@@ -121,6 +135,15 @@ export class FileSystem3dPanel extends TaskPanel {
       this.buildSearchField('size', 'SIZE >'),
       this.buildSearchField('age', 'AGE <'),
     )
+    const home = document.createElement('button')
+    home.className = 'fsn__home'
+    home.textContent = 'RECENTER'
+    home.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.recenter()
+    })
+    rail.appendChild(home)
+
     this.readoutEl = document.createElement('div')
     this.readoutEl.className = 'fsn__readout'
     rail.appendChild(this.readoutEl)
@@ -128,6 +151,7 @@ export class FileSystem3dPanel extends TaskPanel {
     stage.append(rail, this.canvas)
     this.root.append(hint, stage)
 
+    this.recenter()
     this.bindInput()
     this.applyFilters()
     // rAF rather than the shell tick: this is a view, and it must keep
@@ -181,6 +205,20 @@ export class FileSystem3dPanel extends TaskPanel {
         }
         this.platforms.push({ x: px, z: pz, size: spacing * 0.62, label, files })
       }
+    }
+
+    const halfW = ((cols - 1) / 2) * spacing
+    const lastZ = (rows - 1) * spacing + 4
+    this.bounds = {
+      minX: -halfW - MARGIN,
+      maxX: halfW + MARGIN,
+      // Behind the front row you can still see the whole tree. The far
+      // clamp stops a FULL ROW short of the back, because standing between
+      // the last platforms leaves you looking down an empty aisle at
+      // nothing -- measured, and it is indistinguishable from the panel
+      // being broken.
+      minZ: -MARGIN - 4,
+      maxZ: Math.max(4, lastZ - spacing * 1.4),
     }
 
     // The objective file replaces a real one rather than being added, so the
@@ -241,8 +279,11 @@ export class FileSystem3dPanel extends TaskPanel {
   /** Mashing walks you forward. Exploring IS the task, so this is real help. */
   override onKeyBurst(): boolean {
     if (this.isDone) return false
-    this.move(MOVE_PER_STEP)
-    return true
+    // Report honestly whether the key did anything. Returning true
+    // unconditionally meant a camera pinned against the far wall swallowed
+    // every keystroke on the board while visibly doing nothing -- the exact
+    // "mashing feels broken" failure this project keeps having to fix.
+    return this.move(MOVE_PER_STEP)
   }
 
   private bindInput(): void {
@@ -333,11 +374,20 @@ export class FileSystem3dPanel extends TaskPanel {
     e.stopPropagation()
   }
 
-  private move(amount: number): void {
-    this.cam.x += Math.sin(this.cam.yaw) * amount
-    this.cam.z += Math.cos(this.cam.yaw) * amount
-    this.cam.x = clamp(this.cam.x, -BOUND, BOUND)
-    this.cam.z = clamp(this.cam.z, -BOUND, BOUND + 26)
+  /** Returns whether the camera actually moved. */
+  private move(amount: number): boolean {
+    const beforeX = this.cam.x
+    const beforeZ = this.cam.z
+    this.cam.x = clamp(this.cam.x + Math.sin(this.cam.yaw) * amount, this.bounds.minX, this.bounds.maxX)
+    this.cam.z = clamp(this.cam.z + Math.cos(this.cam.yaw) * amount, this.bounds.minZ, this.bounds.maxZ)
+    return this.cam.x !== beforeX || this.cam.z !== beforeZ
+  }
+
+  /** Back to the front of the tree, facing in. Always available. */
+  private recenter(): void {
+    this.cam.x = 0
+    this.cam.z = this.bounds.minZ + 1
+    this.cam.yaw = 0
   }
 
   private pick(e: PointerEvent): void {
@@ -432,9 +482,14 @@ export class FileSystem3dPanel extends TaskPanel {
   private drawFloorGrid(g: CanvasRenderingContext2D, cw: number, ch: number): void {
     g.strokeStyle = 'rgba(70, 200, 120, 0.20)'
     g.lineWidth = 1
-    for (let i = -BOUND; i <= BOUND; i += 5) {
-      this.line(g, i, -BOUND, i, BOUND + 26, cw, ch)
-      this.line(g, -BOUND, i + 10, BOUND, i + 10, cw, ch)
+    // Drawn from the world's own extent, generously overshot, so the floor
+    // always reaches past whatever the camera can see.
+    const { minX, maxX, minZ, maxZ } = this.bounds
+    for (let x = Math.floor(minX / 5) * 5; x <= maxX + 5; x += 5) {
+      this.line(g, x, minZ - 6, x, maxZ + 14, cw, ch)
+    }
+    for (let z = Math.floor(minZ / 5) * 5; z <= maxZ + 14; z += 5) {
+      this.line(g, minX - 5, z, maxX + 5, z, cw, ch)
     }
   }
 

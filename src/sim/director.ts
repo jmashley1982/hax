@@ -127,7 +127,11 @@ export class Director {
    *        back, so a window can't appear on top of the drag in progress.
    */
   tick(dtMs: number, canSpawn = true): void {
-    this.panels = this.panels.filter((p) => !p.isDone)
+    // A panel whose WINDOW is gone is gone, solved or not. Without this a
+    // dismissed panel stayed in the list forever, counting against
+    // desiredCount, so the board quietly ran one panel short for the rest
+    // of the session and no replacement ever spawned.
+    this.panels = this.panels.filter((p) => !p.isDone && !p.win.isClosed)
     this.spawnCooldown -= dtMs
 
     for (const p of this.panels) p.tickDecayModifier(dtMs)
