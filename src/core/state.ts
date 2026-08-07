@@ -52,7 +52,7 @@ export function createInitialState(seedLabel?: string): GameState {
   return {
     seed: hashSeed(label),
     seedLabel: label,
-    mode: 'leet',
+    mode: 'casual',
     theme: 'phosphor',
     layer: 'surface',
     heat: 0,
@@ -121,13 +121,25 @@ export function applySavedCareer(state: GameState): void {
   if (typeof saved.deepestLayer === 'string' && LAYER_ORDER.includes(saved.deepestLayer)) {
     state.deepestLayer = saved.deepestLayer
   }
-  // Anyone who played before the play-mode rework has 'hybrid'/'chaos'/
-  // 'intent' in localStorage. Those are no longer valid PlayModes, and
-  // restoring one would index PLAY_MODES with a missing key -- so validate
-  // rather than trust, and fall through to the default.
-  if (saved.mode === 'casual' || saved.mode === 'leet' || saved.mode === 'irl') {
-    state.mode = saved.mode
+  // Two renames of PlayMode have shipped, so localStorage in the wild can
+  // hold any of five dead values. Restoring one would index PLAY_MODES
+  // with a missing key and crash on the dashboard, so map rather than
+  // trust. The mapping is by MEANING, not by name: the old 'casual' was
+  // the easy one, which is now INFINITE HACK -- restoring it as the new
+  // 'casual' would silently move a player onto a different game.
+  const MODE_MIGRATION: Record<string, PlayMode> = {
+    infinite: 'infinite',
+    casual: 'infinite',
+    leet: 'casual',
+    irl: 'casual',
+    deep: 'casual',
+    // Pre-rework input modes.
+    hybrid: 'casual',
+    chaos: 'infinite',
+    intent: 'casual',
   }
+  const migrated = MODE_MIGRATION[saved.mode as string]
+  if (migrated) state.mode = migrated
   if (saved.theme) state.theme = saved.theme
   // Guarded like everything else here: a save written before sound existed
   // parses fine and leaves this `undefined`, which would silently mute a

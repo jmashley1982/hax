@@ -79,9 +79,9 @@ const AMBIENT_CAPACITY: Record<LayerId, number> = {
 }
 
 const CAPACITY_BY_MODE: Record<PlayMode, number> = {
-  casual: 0,
-  leet: 1,
-  irl: 2,
+  infinite: 0,
+  casual: 1,
+  deep: 2,
 }
 
 /**
@@ -96,9 +96,9 @@ const CAPACITY_BY_MODE: Record<PlayMode, number> = {
 const FIXTURE_RESERVE = 4
 
 const RELEASE_BY_MODE: Record<PlayMode, number> = {
+  infinite: 0,
   casual: 0,
-  leet: 0,
-  irl: 1,
+  deep: 1,
 }
 
 export class BoardBudget {

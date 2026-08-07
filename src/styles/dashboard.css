@@ -143,31 +143,78 @@
   color: var(--fg-bright);
 }
 
-/*
- * The play-mode toggle is a difficulty choice, so it is colour-coded --
- * you should be able to tell at a glance that you left it on IRL HACKER.
+/* ---- the mode ladder ----
+ *
+ * Three named games listed vertically, not one button you cycle. The
+ * cycling toggle showed exactly one at a time, which hid both that there
+ * are three and that a third is on the way. The label sits above the list
+ * rather than beside it, hence the --stack variant.
  */
-.dash__toggle--mode {
+.dash__field--stack {
+  display: block;
+}
+
+.dash__modes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 0.4rem;
+}
+
+.dash__mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  padding: 0.4rem 0.6rem;
+  min-height: 34px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dash__mode:hover:not(:disabled) {
+  border-color: var(--fg);
+  color: var(--fg-bright);
+}
+
+/* The selected mode has to be unmistakable -- it decides which game the
+   JACK IN button starts. */
+.dash__mode.is-active {
+  border-color: var(--ok);
+  color: var(--fg-bright);
   font-weight: bold;
-  min-width: 11ch;
+  box-shadow: inset 0 0 16px -6px var(--ok);
 }
 
-.dash__toggle--mode[data-mode='casual'] { color: var(--ok); border-color: var(--ok); }
-.dash__toggle--mode[data-mode='leet'] { color: var(--accent-2); border-color: var(--accent-2); }
-.dash__toggle--mode[data-mode='irl'] {
-  color: var(--danger, #ff4a4a);
-  border-color: var(--danger, #ff4a4a);
-  animation: mode-irl-pulse 2.2s ease-in-out infinite;
+.dash__mode.is-active .dash__mode-name::before {
+  content: '\25B8 ';
+  color: var(--ok);
 }
 
-@keyframes mode-irl-pulse {
-  0%, 100% { box-shadow: 0 0 0 rgba(255, 74, 74, 0); }
-  50% { box-shadow: 0 0 10px rgba(255, 74, 74, 0.45); }
+/* Visible, legible, and obviously not available. Dimming it to the point
+   of illegibility would defeat the reason it is on the list at all. */
+.dash__mode.is-soon {
+  cursor: default;
+  opacity: 0.55;
+  border-style: dashed;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .dash__toggle--mode[data-mode='irl'] { animation: none; }
+.dash__mode-soon {
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  color: var(--accent-2);
+  border: 1px solid var(--accent-2);
+  padding: 1px 4px;
+  white-space: nowrap;
 }
+
+[data-layout='mobile'] .dash__mode { min-height: 44px; }
 
 .dash__stats {
   display: flex;

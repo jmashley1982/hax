@@ -4,18 +4,26 @@ import type { EvaluatedInput } from './input'
 /**
  * The three ways to play.
  *
- * These used to be *input* modes -- CHAOS / INTENT / HYBRID -- which
- * described the shape of your keyboard rather than the shape of the game.
- * INTENT in particular made raw keystrokes literally inert, so choosing it
- * from a menu that only said "INTENT" produced a game that looked broken.
+ * These started as *input* modes (CHAOS / INTENT / HYBRID), which
+ * described the shape of your keyboard rather than the shape of the game,
+ * and then became pure difficulty settings (CASUAL / L337 / IRL). The
+ * difficulty version was the right axis but the wrong unit of change: all
+ * three still ran the same loop, so the only difference between them was
+ * how often you got hit while doing the same shapeless thing.
  *
- * They are now difficulty settings, and every mode accepts both mashing and
- * typed commands. What changes is *pressure*: how often they come after
- * you, how hard a mistake lands, how fast you recover, and -- at the top
- * end -- whether standing still is survivable at all.
+ * They are now genuinely different games, and the two flags below are
+ * what make them different rather than the coefficients:
  *
- * One profile object holds every coefficient, so tuning "how mean is IRL"
- * never touches UI or system code.
+ *   INFINITE HACK  `endless`, not `levelled`. Never ends, no objectives,
+ *                  no gates -- you leave by pressing ESC. The toy.
+ *   CASUAL HACK    `levelled`. Six levels, each with a stated objective,
+ *                  a tool that answers it, and gates that stop the world
+ *                  until you deal with them. The actual game.
+ *   DEEP HACK      not built. Present on the dashboard as COMING SOON so
+ *                  the ladder is visible.
+ *
+ * Every mode still accepts both mashing and typed commands; that was
+ * never the axis.
  */
 export interface PlayModeProfile {
   id: PlayMode
@@ -23,6 +31,27 @@ export interface PlayModeProfile {
   label: string
   /** One line under the toggle, so the choice is informed. */
   blurb: string
+
+  // -- what KIND of game this is -----------------------------------------
+  /**
+   * Selectable right now. A false here renders the toggle position as
+   * COMING SOON and refuses to start a session, which is deliberately a
+   * visible dead position rather than a hidden one -- a ladder you can
+   * see the top of reads as a roadmap; a two-item list reads as all there
+   * is.
+   */
+  available: boolean
+  /**
+   * Levels have objectives, and objectives are the win condition. When
+   * false the old behaviour applies: a level ends when its progress
+   * threshold fills.
+   */
+  levelled: boolean
+  /**
+   * Reaching the bottom rolls into a fresh target instead of ending the
+   * run. No debrief, no score screen, until the player quits.
+   */
+  endless: boolean
 
   // -- input economy ------------------------------------------------------
   /** Progress per raw keystroke. */
@@ -61,10 +90,19 @@ export interface PlayModeProfile {
 }
 
 export const PLAY_MODES: Record<PlayMode, PlayModeProfile> = {
-  casual: {
-    id: 'casual',
-    label: 'CASUAL',
-    blurb: 'hack at your leisure. easy to stay in the system.',
+  /**
+   * The toy. Inherits every asset built for CASUAL HACK -- the new panels,
+   * the wider image library, the ambient mix -- but none of its structure,
+   * because structure is exactly what you do not want when you are just
+   * messing about with it on a second monitor.
+   */
+  infinite: {
+    id: 'infinite',
+    label: 'INFINITE HACK',
+    blurb: 'never ends. no objectives, no gates. hack until you press ESC.',
+    available: true,
+    levelled: false,
+    endless: true,
     keyGain: 1.8,
     clickGain: 2.2,
     submitGain: 7,
@@ -80,10 +118,18 @@ export const PLAY_MODES: Record<PlayMode, PlayModeProfile> = {
     idleDrainPerSec: 0,
     idleGraceMs: 0,
   },
-  leet: {
-    id: 'leet',
-    label: 'L337 H4X0R',
-    blurb: 'intense and cinematic. interruptions bite, but you can take it.',
+  /**
+   * The game. Pressure sits where L337 H4X0R sat, because that was always
+   * the right *feel* -- what was missing was something to do with it.
+   * `levelled` is the flag that supplies that.
+   */
+  casual: {
+    id: 'casual',
+    label: 'CASUAL HACK',
+    blurb: 'six levels, each with a job to finish. some things will not wait.',
+    available: true,
+    levelled: true,
+    endless: false,
     keyGain: 1.4,
     clickGain: 1.8,
     submitGain: 8,
@@ -99,10 +145,20 @@ export const PLAY_MODES: Record<PlayMode, PlayModeProfile> = {
     idleDrainPerSec: 0,
     idleGraceMs: 0,
   },
-  irl: {
-    id: 'irl',
-    label: 'IRL HACKER',
-    blurb: 'serious business. stop moving and they will have you.',
+  /**
+   * Not built. The coefficients are real so the profile can be tuned and
+   * typechecked alongside the others, but `available: false` keeps it off
+   * the board until it has a design of its own -- shipping it as "CASUAL
+   * but the numbers are bigger" is the mistake this whole round exists to
+   * undo.
+   */
+  deep: {
+    id: 'deep',
+    label: 'DEEP HACK',
+    blurb: 'coming soon.',
+    available: false,
+    levelled: true,
+    endless: false,
     keyGain: 1.2,
     clickGain: 1.5,
     submitGain: 9,
@@ -115,16 +171,21 @@ export const PLAY_MODES: Record<PlayMode, PlayModeProfile> = {
     regenMul: 0.55,
     lockoutRate: 1.7,
     reverseRate: 1.7,
-    // Note this is scaled by damageMul (1.6) like every other penalty, so
-    // the effective rate is ~7.2/sec: about 18 seconds of *total* inactivity
-    // from full integrity to overrun. Any input at all resets the grace, so
-    // this punishes walking away, not thinking.
+    // Scaled by damageMul like every other penalty, so the effective rate
+    // is ~7.2/sec: about 18 seconds of *total* inactivity from full
+    // integrity to overrun. Any input resets the grace, so this punishes
+    // walking away, not thinking.
     idleDrainPerSec: 4.5,
     idleGraceMs: 4000,
   },
 }
 
-export const PLAY_MODE_ORDER: readonly PlayMode[] = ['casual', 'leet', 'irl']
+export const PLAY_MODE_ORDER: readonly PlayMode[] = ['infinite', 'casual', 'deep']
+
+/** The modes a player may actually start. */
+export const PLAYABLE_MODES: readonly PlayMode[] = PLAY_MODE_ORDER.filter(
+  (m) => PLAY_MODES[m].available,
+)
 
 /** Progress contributed by one evaluated input under a given mode profile. */
 export function computeProgress(evaluated: EvaluatedInput, profile: PlayModeProfile): number {

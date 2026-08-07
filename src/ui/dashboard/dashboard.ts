@@ -150,28 +150,54 @@ export class Dashboard {
     box.className = 'dash__box'
     box.append(boxTitle('SETTINGS'))
 
+    // Three named games, listed rather than cycled through one button.
+    // A cycling toggle showed exactly one mode at a time, which hid both
+    // the fact that there are three and the fact that a third is on the
+    // way -- and a ladder you can see the top of reads as a roadmap.
     const modeRow = document.createElement('div')
-    modeRow.className = 'dash__field'
+    modeRow.className = 'dash__field dash__field--stack'
     const modeLab = document.createElement('span')
     modeLab.textContent = 'MODE'
-    const modeBtn = document.createElement('button')
-    modeBtn.className = 'dash__toggle dash__toggle--mode'
+
+    const modeList = document.createElement('div')
+    modeList.className = 'dash__modes'
     const modeHint = document.createElement('div')
     modeHint.className = 'dash__fieldhint'
+
     const paintMode = (): void => {
-      const p = PLAY_MODES[this.state.mode]
-      modeBtn.textContent = p.label
-      modeBtn.dataset.mode = p.id
-      modeHint.textContent = p.blurb
+      modeHint.textContent = PLAY_MODES[this.state.mode]?.blurb ?? ''
+      for (const el of modeList.querySelectorAll('.dash__mode')) {
+        el.classList.toggle('is-active', (el as HTMLElement).dataset.mode === this.state.mode)
+      }
     }
-    modeBtn.addEventListener('click', () => {
-      const i = PLAY_MODE_ORDER.indexOf(this.state.mode)
-      this.state.mode = PLAY_MODE_ORDER[(i + 1) % PLAY_MODE_ORDER.length] ?? 'leet'
-      paintMode()
-      saveState(this.state)
-    })
+
+    for (const id of PLAY_MODE_ORDER) {
+      const p = PLAY_MODES[id]
+      const btn = document.createElement('button')
+      btn.className = 'dash__mode'
+      btn.dataset.mode = id
+      const name = document.createElement('span')
+      name.className = 'dash__mode-name'
+      name.textContent = p.label
+      btn.appendChild(name)
+      if (!p.available) {
+        btn.disabled = true
+        btn.classList.add('is-soon')
+        const tag = document.createElement('span')
+        tag.className = 'dash__mode-soon'
+        tag.textContent = 'COMING SOON'
+        btn.appendChild(tag)
+      } else {
+        btn.addEventListener('click', () => {
+          this.state.mode = id
+          paintMode()
+          saveState(this.state)
+        })
+      }
+      modeList.appendChild(btn)
+    }
     paintMode()
-    modeRow.append(modeLab, modeBtn)
+    modeRow.append(modeLab, modeList)
 
     const themeRow = document.createElement('div')
     themeRow.className = 'dash__field'
@@ -316,6 +342,10 @@ export class Dashboard {
 
   private start(): void {
     if (!this.selected) return
+    // Belt and braces: an unbuilt mode cannot be picked from the list, but
+    // a hand-edited save could still name one, and starting a session on a
+    // mode with no design would fail somewhere much less obvious.
+    if (!PLAY_MODES[this.state.mode]?.available) this.state.mode = 'casual'
     // The one place audio is allowed to wake up. Autoplay policy requires a
     // real gesture, and both JACK IN and RANDOM JOB route through here, so
     // nothing new is gated behind anything the player wasn't clicking

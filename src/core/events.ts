@@ -21,11 +21,23 @@ export interface TerminalLine {
 }
 
 /**
- * How the game plays, chosen on the dashboard. These replaced the old
- * CHAOS / INTENT / HYBRID *input* modes: those described the keyboard,
- * these describe the pressure. See core/progress.ts for the coefficients.
+ * How the game plays, chosen on the dashboard.
+ *
+ * Two renames deep. First they were *input* modes (CHAOS / INTENT /
+ * HYBRID), which described the keyboard rather than the game. Then they
+ * were pure difficulty settings (CASUAL / L337 / IRL), which described
+ * pressure but left all three playing the same shapeless loop -- "it all
+ * feels very random and inconsequential in all modes".
+ *
+ * Now they are different *games*:
+ *   infinite  never ends, no objectives, no gates. The fidget toy.
+ *   casual    six levels, each with an objective and blocking gates.
+ *   deep      not built yet; shown on the dashboard as COMING SOON.
+ *
+ * See core/progress.ts for the coefficients and the two flags that decide
+ * which of the above a profile actually is.
  */
-export type PlayMode = 'casual' | 'leet' | 'irl'
+export type PlayMode = 'infinite' | 'casual' | 'deep'
 
 export type ThemeId = 'phosphor' | 'amber' | 'neon' | 'agency'
 

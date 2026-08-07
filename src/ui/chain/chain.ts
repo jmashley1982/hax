@@ -107,8 +107,8 @@ const ALLY_HANDLES = ['ghostwire', 'm0th', 'null_saint', 'brownout', 'tessellate
 
 /** Snags per scan, by mode. CASUAL still snags -- it just forgives you for being slow. */
 function snagCountFor(mode: PlayModeProfile, rng: Rng): number {
-  if (mode.id === 'casual') return int(rng, 1, 2)
-  if (mode.id === 'irl') return int(rng, 3, 4)
+  if (mode.id === 'infinite') return int(rng, 1, 2)
+  if (mode.id === 'deep') return int(rng, 3, 4)
   return int(rng, 2, 3)
 }
 
@@ -120,8 +120,8 @@ function snagCountFor(mode: PlayModeProfile, rng: Rng): number {
  * bleeding integrity until you deal with it.
  */
 function snagAutoReleaseMs(mode: PlayModeProfile): number {
-  if (mode.id === 'casual') return 6000
-  if (mode.id === 'leet') return 16000
+  if (mode.id === 'infinite') return 6000
+  if (mode.id === 'casual') return 16000
   return Number.POSITIVE_INFINITY
 }
 

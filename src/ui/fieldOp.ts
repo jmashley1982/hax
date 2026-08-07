@@ -45,8 +45,8 @@ const SITES = ['LOADING BAY', 'REAR ENTRY', 'SERVER ROOM', 'RECORDS ANNEX', 'PLA
 
 /** How long you get once EXECUTE lands. Short on purpose, shorter when it should be. */
 function executeWindowMs(mode: PlayModeProfile): number {
-  if (mode.id === 'casual') return 14_000
-  if (mode.id === 'leet') return 10_000
+  if (mode.id === 'infinite') return 14_000
+  if (mode.id === 'casual') return 10_000
   return 7000
 }
 

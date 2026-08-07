@@ -3,9 +3,9 @@ import { playSfx } from '@/audio/sounds'
 import { audio } from '@/audio/engine'
 import { clock } from '@/core/clock'
 import { mulberry32, hashSeed, int, type Rng } from '@/core/rng'
-import { saveState, LAYER_ORDER, type GameState } from '@/core/state'
+import { LAYER_ORDER, type GameState } from '@/core/state'
 import { InputPipeline } from '@/core/input'
-import { PLAY_MODES, PLAY_MODE_ORDER, computeProgress, type PlayModeProfile } from '@/core/progress'
+import { PLAY_MODES, computeProgress, type PlayModeProfile } from '@/core/progress'
 import { matchCommand } from '@/sim/commands/registry'
 import { buildCommandResponse } from '@/sim/commands/responses'
 import { HeatSystem } from '@/sim/heat'
@@ -549,7 +549,7 @@ export class Shell {
 
   private renderStatusRight(): void {
     this.statusRight.textContent =
-      `MODE:${PLAY_MODES[this.state.mode].label} [TAB]  THEME:${this.state.theme.toUpperCase()}  SEED:${this.state.seedLabel}`
+      `MODE:${PLAY_MODES[this.state.mode].label}  THEME:${this.state.theme.toUpperCase()}  SEED:${this.state.seedLabel}`
   }
 
   /** Keeps the target org visible at all times -- the point of reference for every threat/breach line. */
@@ -588,27 +588,23 @@ export class Shell {
     })
   }
 
+  /**
+   * ESC only.
+   *
+   * Tab used to cycle the play mode mid-run, which was defensible when the
+   * modes were nothing but difficulty coefficients. They are different
+   * games now: INFINITE HACK has no level objectives and never ends,
+   * CASUAL HACK is six objectives and a score. Switching between them
+   * halfway through a level would either strand an objective nobody can
+   * finish or drop the player into a levelled run with no level set up.
+   * The mode is chosen on the dashboard and fixed for the run.
+   */
   private bindModeHotkey(): void {
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        this.confirmAbort()
-        return
-      }
-      if (e.key !== 'Tab') return
+      if (e.key !== 'Escape') return
       e.preventDefault()
-      this.cycleMode()
+      this.confirmAbort()
     })
-  }
-
-  private cycleMode(): void {
-    const idx = PLAY_MODE_ORDER.indexOf(this.state.mode)
-    const next = PLAY_MODE_ORDER[(idx + 1) % PLAY_MODE_ORDER.length] ?? 'leet'
-    this.state.mode = next
-    this.applyDifficulty()
-    this.renderStatusRight()
-    saveState(this.state)
-    store.emit('mode:change', { mode: next })
   }
 
   /**
@@ -1532,8 +1528,8 @@ export class Shell {
 
     // Their ETA is the difficulty knob: CASUAL gives you room to work it
     // out, IRL barely gives you time to react.
-    const seconds = this.mode.id === 'casual' ? 95 : this.mode.id === 'leet' ? 70 : 50
-    const hops = this.mode.id === 'casual' ? 3 : this.mode.id === 'leet' ? 4 : 6
+    const seconds = this.mode.id === 'infinite' ? 95 : this.mode.id === 'casual' ? 70 : 50
+    const hops = this.mode.id === 'infinite' ? 3 : this.mode.id === 'casual' ? 4 : 6
 
     playSfx('alarm')
     this.manhunt = new Manhunt({
