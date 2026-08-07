@@ -455,6 +455,15 @@
  */
 .docwin { min-width: 232px; max-width: 258px; }
 
+/*
+ * ...and then the library stopped being uniformly portrait. A landscape
+ * screen grab capped at 258px wide inside a 1x2 tall box letterboxes down
+ * to a strip about as tall as its own caption. The window declares the
+ * span its image actually wants (docWindow.ts) and the frame follows.
+ */
+.docwin--landscape { max-width: 526px; }
+.docwin--square { max-width: 258px; }
+
 .docwin__frame {
   background: #000;
   border: 1px solid var(--panel-edge);
@@ -462,6 +471,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /*
+   * Fill the window the span bought. Without this the frame shrink-wraps
+   * the image, so a landscape photo in a 484px two-column window drew at
+   * 296px with a black margin either side -- the window got wider and the
+   * picture did not, which is the opposite of the point.
+   */
+  width: 100%;
 }
 
 .docwin__img {
@@ -469,6 +485,7 @@
   max-width: 100%;
   max-height: 330px;
   object-fit: contain;
+  width: auto;
   /* Graded to sit in the CRT world rather than looking pasted in. */
   filter: grayscale(0.25) contrast(1.06) brightness(0.95);
 }
@@ -481,7 +498,15 @@
   word-break: break-all;
 }
 
-[data-layout='mobile'] .docwin { max-width: 100%; }
+[data-layout='mobile'] .docwin,
+[data-layout='mobile'] .docwin--landscape { max-width: 100%; }
+
+/* A landscape image gets less vertical room than a portrait one, or the
+   two-column window becomes taller than it is wide and the point is lost.
+   300px is what lets a 4:3 photo reach the full two-column width before
+   the height cap bites; 240 left it short by a third. */
+.docwin--landscape .docwin__img { max-height: 300px; }
+.docwin--square .docwin__img { max-height: 250px; }
 
 /* The contract's objective file: unmistakable among the decoys. */
 .dexfil__file.is-objective {
