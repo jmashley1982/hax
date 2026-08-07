@@ -508,6 +508,32 @@
 .docwin--landscape .docwin__img { max-height: 300px; }
 .docwin--square .docwin__img { max-height: 250px; }
 
+/* Portraits shrink-wrap instead of filling.
+ *
+ * `width: 100%` on the frame above is what fixed the landscape case -- a
+ * wide photo drew at 296px inside a 484px window with black either side.
+ * The same rule pillarboxes a PORTRAIT, and for the opposite reason: the
+ * image is already at its full height, so the spare width is width it can
+ * never use. Measured: a 670x1200 photo drawing 184px wide inside a 229px
+ * frame, 45px of black.
+ *
+ * So the rule is shape-specific rather than universal. Landscape and square
+ * have width to gain and should take it; portrait has none and should not
+ * be given a frame it cannot fill. Cropping to fit was the alternative and
+ * it is wrong here -- these read as photographs of documents, and cropping
+ * a document loses the thing being photographed.
+ */
+/* fit-content + auto margins, NOT `width: auto; align-self: center`. The
+   frame's parent is a block, so align-self is inert there and `width: auto`
+   on a block-level flex container fills its parent -- which is exactly the
+   stretch being removed. Measured after that first attempt: align-self
+   computed to `center` and the width was still 228px. */
+.docwin--portrait .docwin__frame {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
 /* The contract's objective file: unmistakable among the decoys. */
 .dexfil__file.is-objective {
   border-color: var(--warn);
