@@ -45,6 +45,7 @@ import { preloadAvailability } from '@/media/videoRegistry'
 import { preloadDocs, pickAvailableDoc, docSrc } from '@/media/imageRegistry'
 import { spawnDocWindow } from './windows/docWindow'
 import { showMediaOverlay } from './mediaOverlay'
+import { mountEndingMontage, type EndingTone } from './endingMontage'
 import { spawnFacilityWindow, spawnNewsWindow } from './windows/intelWindow'
 import { TouchInput } from './touch'
 import { isMobileLayout } from '@/core/device'
@@ -77,6 +78,20 @@ const GATE_DEFER_MS = 350
  */
 const TIP_OFF_CHANCE = 0.55
 const BREAKTHROUGH_GRACE_MS = 2500
+
+/**
+ * How long the ending card holds, and how long after it the debrief lands.
+ *
+ * One constant with the gap derived from it, because these two numbers had
+ * already drifted: the card removed itself at 3800ms while the burned and
+ * traced paths handed off to the debrief at 3600, cutting their own ending
+ * short. The montage made that visible. Anything that lengthens the ending
+ * has to move both, so they are the same number by construction.
+ */
+const ENDING_HOLD_MS = 5200
+/** Endless has no ending to hold -- see showEndingBanner. */
+const ENDING_HOLD_ENDLESS_MS = 2600
+const DEBRIEF_GAP_MS = 400
 
 /** How a contract ended, handed back to the App for career bookkeeping. */
 export interface SessionOutcome {
@@ -1763,7 +1778,11 @@ export class Shell {
       tone: 'success',
       speed: 1,
     })
-    this.showEndingBanner(clean ? 'CLEAN EXTRACTION' : 'EXTRACTED -- TRACED')
+    this.showEndingBanner(
+      'EXTRACTION COMPLETE',
+      clean ? 'CLEAN EXTRACTION' : 'EXTRACTED -- TRACED',
+      'clean',
+    )
     this.endContract('completed')
   }
 
@@ -1868,8 +1887,8 @@ export class Shell {
       speed: 0,
     })
     this.objective.set('BURNED -- disconnecting')
-    this.showEndingBanner('BURNED')
-    this.endContract('burned', 3600)
+    this.showEndingBanner('WORKSTATION OVERRUN', 'BURNED', 'burned')
+    this.endContract('burned')
   }
 
   // -- Trace: the pursuit meter that never lets you rest -------------------
@@ -1959,8 +1978,8 @@ export class Shell {
     this.activeThreats = []
 
     this.objective.set('TRACED -- disconnecting')
-    this.showEndingBanner('TRACED')
-    this.endContract('burned', 3600)
+    this.showEndingBanner('THEY FOUND YOU', 'TRACED', 'burned')
+    this.endContract('burned')
   }
 
   // -- Lockout: they kill YOUR terminal ----------------------------------
@@ -2767,19 +2786,31 @@ export class Shell {
       tone: 'success',
       speed: 1,
     })
-    this.showEndingBanner(verdict)
+    // Getting out at all is a win; getting out clean is a better one. Only
+    // a total wipe of the exit wave reads as burned.
+    this.showEndingBanner('BREACH COMPLETE', verdict, successes > 0 ? 'clean' : 'burned')
     // INFINITE HACK does not have endings, it has targets.
     if (this.rollOverToNextTarget('BREACH COMPLETE')) return
     this.endContract('completed')
   }
 
-  private showEndingBanner(verdict: string): void {
+  /**
+   * The card a run ends on.
+   *
+   * `headline` used to be hardcoded to 'BREACH COMPLETE' for every caller,
+   * so losing the machine to their incident response or getting run down
+   * by TRACE both ended on a screen congratulating you for a successful
+   * breach. It is a parameter now, and `tone` decides both the colour and
+   * which photographs the montage reaches for.
+   */
+  private showEndingBanner(headline: string, verdict: string, tone: EndingTone): void {
     const el = document.createElement('div')
     el.className = 'ending-banner'
+    el.dataset.tone = tone
 
     const title = document.createElement('div')
     title.className = 'ending-banner__title'
-    title.textContent = 'BREACH COMPLETE'
+    title.textContent = headline
 
     const sub = document.createElement('div')
     sub.className = 'ending-banner__sub'
@@ -2790,8 +2821,24 @@ export class Shell {
     score.textContent = `SCORE ${Math.floor(this.state.score)}`
 
     el.append(title, sub, score)
+
+    // INFINITE HACK has targets, not endings: rollOverToNextTarget rebuilds
+    // the board underneath this card a second and a bit from now, so a
+    // five-second montage would be playing over the next contract's
+    // opening. Endless keeps the short, flat card it always had -- which
+    // also keeps its rng stream unperturbed, since it is the only mode
+    // where a run continues past an ending.
+    if (!this.mode.endless) {
+      mountEndingMontage(el, { rng: this.rng, tone, later: (fn, ms) => this.later(fn, ms) })
+    }
+
     this.shellEl.appendChild(el)
-    setTimeout(() => el.remove(), 3800)
+    this.later(() => el.remove(), this.endingHoldMs)
+  }
+
+  /** How long the ending card holds. Endless cuts it short (see above). */
+  private get endingHoldMs(): number {
+    return this.mode.endless ? ENDING_HOLD_ENDLESS_MS : ENDING_HOLD_MS
   }
 
   /**
@@ -2901,7 +2948,7 @@ export class Shell {
     return true
   }
 
-  private endContract(kind: SessionOutcome['kind'], delayMs = 4200): void {
+  private endContract(kind: SessionOutcome['kind'], delayMs = this.endingHoldMs + DEBRIEF_GAP_MS): void {
     this.later(() => this.finishSession(kind), delayMs)
   }
 }

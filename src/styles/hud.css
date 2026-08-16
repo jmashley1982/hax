@@ -202,11 +202,103 @@
   }
 }
 
+/* ---- ENDING MONTAGE ----
+   Full-bleed stills behind the verdict. z-index -1 inside the banner's own
+   stacking context paints these ABOVE the banner's scrim and BELOW its
+   text, which is exactly the sandwich we want: dimmed board, photographs,
+   words. */
+
+.ending-montage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.ending-montage__frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 380ms ease-in;
+  /* Slow push in, shared with the breakthrough backdrop. Long enough to
+     cover the whole card so no frame ever sits still. */
+  animation: ending-montage-frame 5200ms ease-out forwards;
+}
+
+.ending-montage__frame.is-on {
+  opacity: 0.55;
+}
+
+@keyframes ending-montage-frame {
+  0% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* The banner is z-2000, well above .crt-overlay at z-500, so a photograph
+   here would be the only thing on screen without the scanlines everything
+   else lives behind. Put them back locally. */
+.ending-montage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.32) 3px,
+    rgba(0, 0, 0, 0.32) 4px
+  );
+  pointer-events: none;
+}
+
+/* Keeps the verdict readable over a busy frame without flattening the
+   image at the edges. */
+.ending-montage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.35) 55%, rgba(0, 0, 0, 0.7) 100%);
+  pointer-events: none;
+}
+
+/* Tone. A clean exit is cold and documentary; a burned one is their
+   surveillance of you, pushed warm and harsh like a printed still. */
+.ending-banner[data-tone='clean'] .ending-montage__frame {
+  filter: grayscale(0.45) contrast(1.05) brightness(0.95);
+}
+
+.ending-banner[data-tone='burned'] .ending-montage__frame {
+  filter: grayscale(0.3) contrast(1.18) saturate(1.1) sepia(0.22) brightness(0.88);
+}
+
+.ending-banner[data-tone='burned'] .ending-banner__title {
+  color: var(--danger);
+  text-shadow: 0 0 20px var(--danger);
+}
+
+.ending-banner[data-tone='burned'] .ending-banner__sub {
+  color: var(--danger);
+}
+
+/* The score is themed by the active layer palette, which on a burned
+   ending can land somewhere cold and violet directly under a red
+   headline. Mute it into the same register instead. */
+.ending-banner[data-tone='burned'] .ending-banner__score {
+  color: color-mix(in srgb, var(--danger) 55%, #000);
+}
+
 .ending-banner__title {
   font-size: 34px;
   letter-spacing: 0.16em;
   color: var(--fg-bright);
   text-shadow: 0 0 18px var(--glow);
+  /* Above .ending-montage's vignette pseudo-element. */
+  position: relative;
+  z-index: 1;
 }
 
 .ending-banner__sub {
@@ -214,12 +306,16 @@
   letter-spacing: 0.08em;
   color: var(--accent-2);
   text-transform: uppercase;
+  position: relative;
+  z-index: 1;
 }
 
 .ending-banner__score {
   font-size: 14px;
   letter-spacing: 0.1em;
   color: var(--fg-dim);
+  position: relative;
+  z-index: 1;
 }
 
 /* A lost counter-intrusion wave reuses .ending-banner's layout/timing but
@@ -332,6 +428,12 @@
 @media (prefers-reduced-motion: reduce) {
   .breakthrough-card,
   .breakthrough-card__backdrop { animation: none; }
+
+  /* Hold the first still instead of pushing in and crossfading. The
+     montage still says what the ending was; it just stops moving. */
+  .ending-banner,
+  .ending-montage__frame { animation: none; }
+  .ending-montage__frame { transition: none; }
 }
 
 /* The contract's standing goal, shown beside the moment-to-moment action.

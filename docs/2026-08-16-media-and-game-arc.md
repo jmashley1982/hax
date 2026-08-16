@@ -101,10 +101,43 @@ level cannot require a tool it cannot spawn" holds by construction rather
 than being true of five specs by luck. `npm run level:check` proves it for
 all six layers and fails with exactly this error against the old pool.
 
+## The ending montage
+
+Built (`src/ui/endingMontage.ts`). Every run now ends on four full-bleed
+stills crossfading behind the verdict, over ~5s, and **what you see depends
+on how you ended**:
+
+- **clean** — the documents you took, then the building you took them from.
+- **burned** — *their* photographs of *you*: the junction box you tapped,
+  the rooftop dish, the car you sat in. The recon shots the reverse-hack
+  beat uses to say "we see you", entered as evidence.
+
+It is not a `showMediaOverlay` — that one is single-instance and dismisses
+on any keypress. This is a backdrop that lives and dies with the banner,
+mounted inside it at `z-index: -1` so it paints above the scrim and below
+the text. It carries its own scanline layer because `.ending-banner` sits
+at z-2000, above `.crt-overlay` at z-500, and a bare photograph up there is
+the only thing on screen not living behind the CRT.
+
+Two things fell out of building it:
+
+- **The ending didn't know how it ended.** `showEndingBanner` hardcoded the
+  headline `'BREACH COMPLETE'` for all four call sites, so losing your
+  machine to their incident response, or getting run down by TRACE, ended
+  on a screen congratulating you for a successful breach. Headline and tone
+  are parameters now — `WORKSTATION OVERRUN`, `THEY FOUND YOU`.
+- **The card and the debrief disagreed about time.** The banner removed
+  itself at 3800ms while the burned/traced paths handed off at 3600, so
+  those endings cut their own card short. Both derive from `ENDING_HOLD_MS`
+  now and cannot drift.
+
+INFINITE HACK keeps the short flat card: `rollOverToNextTarget` rebuilds
+the board about a second later, so a montage there would play over the next
+contract's opening. That also keeps its rng stream unperturbed — endless is
+the only mode where a run continues past an ending.
+
 ## What's still open
 
-- Finale montage (cycling location/recon images behind the ending banner)
-  — designed, not built; lowest-priority item in the original plan.
 - No shop/economy beyond the raw credits counter.
 - The new image categories don't yet feed `src/media/fakeSite.ts`'s
   generated target homepage (a `corporate`/`location` hero image there

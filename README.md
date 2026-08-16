@@ -174,6 +174,13 @@ the boot sequence's target dossier, and any image you click on all open in
 a full-screen beat (`src/ui/mediaOverlay.ts`) rather than staying a
 260px-wide window.
 
+The ending spends the library too (`src/ui/endingMontage.ts`): four
+full-bleed stills crossfade behind the verdict, chosen by how the run
+ended. Win and you see the documents you took and the building you took
+them from; get burned and you see *their* surveillance photographs of
+*you*. A thin library just means fewer frames — as everywhere else, missing
+media degrades quietly rather than erroring.
+
 ### Video
 
 Drop clips into `public/video/`. Camera windows use them for CCTV feeds and
