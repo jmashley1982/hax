@@ -145,6 +145,7 @@ export class Dashboard {
     stats.className = 'dash__stats'
     stats.append(
       statLine('CAREER SCORE', String(Math.floor(this.state.score))),
+      statLine('CREDITS', `${Math.floor(this.state.credits)} CR`),
       statLine('CONTRACTS RUN', String(this.state.contractsRun)),
       statLine('DEEPEST LAYER', this.state.deepestLayer.toUpperCase()),
       statLine('INTEGRITY', `${Math.round(this.state.integrity)}%`),

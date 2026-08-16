@@ -1,0 +1,122 @@
+/* ============================================================
+   MEDIA OVERLAY (ui/mediaOverlay.ts)
+   The one cinematic beat: a single recovered image, full-screen, held
+   for a few seconds. Every other media surface in this game is a small
+   desktop popup among a dozen others -- this is the one thing worth
+   stopping to look at.
+
+   Unlike the gate scrim it borrows its language from, this does NOT
+   freeze input -- z-index sits below the gate (2200) and the ending
+   banner (2000) on purpose, since both already guard against this
+   overlay being requested while they're up.
+   ============================================================ */
+
+.media-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1950;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  background: color-mix(in srgb, var(--bg-deep) 88%, transparent);
+  cursor: pointer;
+  animation: media-overlay-in 220ms ease-out;
+}
+
+.media-overlay.is-closing {
+  animation: media-overlay-out 200ms ease-in forwards;
+}
+
+@keyframes media-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes media-overlay-out {
+  to { opacity: 0; }
+}
+
+.media-overlay__frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 70vw;
+  max-height: 70vh;
+}
+
+.media-overlay__kicker {
+  font-size: 12px;
+  letter-spacing: 0.34em;
+  color: var(--fg-bright);
+  text-shadow: 0 0 16px var(--glow);
+}
+
+.media-overlay__imgwrap {
+  position: relative;
+  max-width: 70vw;
+  max-height: 55vh;
+  border: 2px solid var(--panel-edge);
+  box-shadow: 0 0 60px -12px var(--glow);
+  overflow: hidden;
+}
+
+.media-overlay__img {
+  display: block;
+  max-width: 70vw;
+  max-height: 55vh;
+  object-fit: contain;
+}
+
+/* A thin scanning band, sweeping once, so the reveal reads as decryption
+   rather than a plain image popping into place. */
+.media-overlay__imgwrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--fg) 22%, transparent) 48%,
+    transparent 100%
+  );
+  transform: translateY(-100%);
+  animation: media-overlay-scan 900ms ease-out;
+}
+
+@keyframes media-overlay-scan {
+  to { transform: translateY(100%); }
+}
+
+.media-overlay__decrypt {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--accent-2);
+  opacity: 0.85;
+}
+
+.media-overlay__caption {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  text-align: center;
+  max-width: 60ch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-overlay,
+  .media-overlay.is-closing,
+  .media-overlay__imgwrap::after {
+    animation: none;
+  }
+}
+
+[data-layout='mobile'] .media-overlay__frame {
+  max-width: 92vw;
+}
+[data-layout='mobile'] .media-overlay__imgwrap,
+[data-layout='mobile'] .media-overlay__img {
+  max-width: 92vw;
+  max-height: 50vh;
+}

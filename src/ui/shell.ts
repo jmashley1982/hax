@@ -13,6 +13,7 @@ import { matchCommand } from '@/sim/commands/registry'
 import { buildCommandResponse } from '@/sim/commands/responses'
 import { HeatSystem } from '@/sim/heat'
 import { IntegritySystem, INTEGRITY_COST, INTEGRITY_GAIN } from '@/sim/integrity'
+import { TraceSystem, TRACE_GAIN, TRACE_RELIEF, type TraceThreshold } from '@/sim/trace'
 import { awardScore } from '@/sim/score'
 import { LayerSystem } from '@/sim/layers'
 import { Director } from '@/sim/director'
@@ -41,8 +42,9 @@ import { Autopilot } from '@/film/autopilot'
 import { spawnCamWindow } from './windows/camWindow'
 import { spawnAllyMessage, spawnOperatorMessage } from './windows/messageWindow'
 import { preloadAvailability } from '@/media/videoRegistry'
-import { preloadDocs } from '@/media/imageRegistry'
+import { preloadDocs, pickAvailableDoc, docSrc } from '@/media/imageRegistry'
 import { spawnDocWindow } from './windows/docWindow'
+import { showMediaOverlay } from './mediaOverlay'
 import { spawnFacilityWindow, spawnNewsWindow } from './windows/intelWindow'
 import { TouchInput } from './touch'
 import { isMobileLayout } from '@/core/device'
@@ -53,7 +55,7 @@ import { PANEL_LABELS } from './panels/registry'
 import { ThreatPanel } from './panels/threatPanel'
 import { TargetSitePanel } from './panels/targetSite'
 import { applyLayerPalette, applyLayerSkin, brandLayerPalettes } from '@/themes/themes'
-import { pickAmbientKind } from '@/sim/layers'
+import { pickAmbientKind, pickImageCategory, topImageCategory } from '@/sim/layers'
 import { Chain } from './chain/chain'
 import { Messenger, type Offer } from './messenger'
 import { Manhunt } from './manhunt'
@@ -116,6 +118,7 @@ export class Shell {
   private windows: WindowManager
   private heat: HeatSystem
   private integrity: IntegritySystem
+  private trace: TraceSystem
   private reverseHack: ReverseHack | null = null
   private layers: LayerSystem
   private director: Director
@@ -274,6 +277,13 @@ export class Shell {
   private crt!: CrtOverlay
   private prompt!: Prompt
   private hud!: Hud
+  /**
+   * Consecutive clean panel clears. Breaks on any hostile damage source
+   * (see INTEGRITY_COST), a failed gate, or a lockout -- the same list of
+   * "something went wrong" moments those already track, not a second
+   * parallel definition of them.
+   */
+  private comboCount = 0
 
   constructor(
     root: HTMLElement,
@@ -296,6 +306,7 @@ export class Shell {
 
     this.heat = new HeatSystem(state)
     this.integrity = new IntegritySystem(state)
+    this.trace = new TraceSystem(state)
     this.layers = new LayerSystem(state)
     this.desk = new DesktopLayout(this.shellEl)
     this.windows = new WindowManager(this.desk.work, mulberry32(state.seed + 2))
@@ -331,6 +342,7 @@ export class Shell {
       this.pouch,
       (token) => this.spendToken(token),
       () => this.layers.current.systemKind,
+      () => this.comboCount,
     )
     this.objective = new ObjectiveBar(this.desk.top)
 
@@ -347,6 +359,7 @@ export class Shell {
         // letting them in -- the most direct route to a reverse hack.
         onCorrupted: () => {
           this.integrity.damage(INTEGRITY_COST.corruptedFile)
+          this.breakCombo()
           this.triggerReverseHack(0.5)
         },
         onPurged: (file) => {
@@ -697,11 +710,13 @@ export class Shell {
       this.gatesCleared += 1
       this.integrity.repair(INTEGRITY_GAIN.waveRepelled)
       this.heat.add(-12)
-      awardScore(this.state, 200)
+      awardScore(this.state, Math.round(200 * this.comboMultiplier))
       store.emit('terminal:line', { text: '>>>> session re-keyed -- you are still in', tone: 'success', speed: 0 })
     } else {
       this.integrity.damage(INTEGRITY_COST.lostWave)
       this.heat.add(28)
+      this.trace.add(TRACE_GAIN.gateFailed)
+      this.breakCombo()
       this.levelRun?.penalise()
       this.findLog?.paint()
       this.paintLevelObjective()
@@ -939,6 +954,7 @@ export class Shell {
     this.counterHack.setDifficulty(m.threatRate, m.threatSize)
     this.lockoutDirector.setDifficulty(m.lockoutRate)
     this.integrity.setDifficulty(m.damageMul, m.regenMul)
+    this.trace.setRate(m.traceRate)
     this.shellEl.dataset.playmode = m.id
   }
 
@@ -1164,12 +1180,13 @@ export class Shell {
    * makes the top difficulty a different game rather than the same game with
    * bigger numbers, so it must not leak into CASUAL at any strength.
    */
-  private tickIdlePressure(dt: number): void {
+  /** @returns true while the standing-still penalty is actively bleeding -- consumed by the TRACE tick right after this call, since "stopped moving" is a trace source too, not just an integrity one. */
+  private tickIdlePressure(dt: number): boolean {
     const { idleDrainPerSec, idleGraceMs } = this.mode
-    if (idleDrainPerSec <= 0) return
-    if (this.lockout || this.inFinale || this.ejecting) return
+    if (idleDrainPerSec <= 0) return false
+    if (this.lockout || this.inFinale || this.ejecting) return false
     const idleFor = this.elapsedMs - this.lastInputMs
-    if (idleFor < idleGraceMs) return
+    if (idleFor < idleGraceMs) return false
 
     if (!this.idleWarned) {
       this.idleWarned = true
@@ -1181,6 +1198,7 @@ export class Shell {
       this.shellEl.classList.add('is-idle-bleed')
     }
     this.integrity.damage((idleDrainPerSec * dt) / 1000)
+    return true
   }
 
   private applyResidualProgress(): void {
@@ -1299,6 +1317,36 @@ export class Shell {
     }
   }
 
+  // -- Combo: reward for a clean streak, not just for speed ---------------
+
+  /** 1.0 at zero streak, +0.25 per clear, caps at x3 (streak of 8+). */
+  private get comboMultiplier(): number {
+    return 1 + Math.min(this.comboCount, 8) * 0.25
+  }
+
+  /**
+   * Pure state -- the HUD's own render() diffs `getCombo()` against what it
+   * last painted to drive the pop/break animation, same as every other
+   * meter in that class. This just owns the number and the story beat.
+   */
+  private bumpCombo(): void {
+    this.comboCount += 1
+    if (this.comboCount >= 2) {
+      store.emit('terminal:line', {
+        text: `>> chain intact :: x${this.comboMultiplier.toFixed(2)}`,
+        tone: 'success',
+        speed: 0,
+      })
+    }
+  }
+
+  /** Called from every hostile-damage / gate-fail / lockout site -- the same list INTEGRITY_COST already names. */
+  private breakCombo(): void {
+    if (this.comboCount === 0) return
+    this.comboCount = 0
+    store.emit('terminal:line', { text: '>> chain broken', tone: 'warning', speed: 0 })
+  }
+
   // -- Panel outcomes ----------------------------------------------------
 
   private onPanelProgress(_panel: TaskPanel, delta: number): void {
@@ -1316,7 +1364,8 @@ export class Shell {
 
   private onPanelComplete(panel: TaskPanel): void {
     playSfx('panelClear')
-    awardScore(this.state, 120)
+    awardScore(this.state, Math.round(120 * this.comboMultiplier))
+    this.bumpCombo()
     this.integrity.repair(INTEGRITY_GAIN.panelCleared)
     this.heat.add(-6)
 
@@ -1367,7 +1416,7 @@ export class Shell {
     // as a person would.
     this.autopilot.tick(dt)
 
-    this.tickIdlePressure(dt)
+    const idleBleeding = this.tickIdlePressure(dt)
     this.tickOffers(dt)
     this.tickAmbient()
     this.tickReverseRoll()
@@ -1382,9 +1431,10 @@ export class Shell {
     this.refreshTarget()
 
     // The one continuous sound in the game: a low bed that grows with how
-    // much they have noticed you. Driven from the same number the meter
-    // paints, so it can never disagree with what is on screen.
-    audio.setHeat(this.state.heat)
+    // much they have noticed you OR how deep the trace on you has gotten
+    // -- whichever is worse. Driven from the same numbers the meters
+    // paint, so it can never disagree with what is on screen.
+    audio.setHeat(Math.max(this.state.heat, this.trace.value * 0.9))
     if (this.state.heat > this.peakHeat) this.peakHeat = this.state.heat
     if (this.state.integrity < this.lowestIntegrity) this.lowestIntegrity = this.state.integrity
 
@@ -1432,6 +1482,19 @@ export class Shell {
       })
     }
     if (this.state.integrity > 35) this.shellEl.classList.remove('is-integrity-critical')
+
+    // TRACE: the run-level pursuit meter. Unlike heat and integrity it
+    // never recovers on its own -- see sim/trace.ts -- so this is the one
+    // meter in the game that can only be answered by playing well, not by
+    // waiting.
+    const traceEvents = this.trace.tick(dt, this.state.heat, idleBleeding)
+    for (const t of traceEvents.crossed) {
+      if (t === 100) {
+        this.handleTraced()
+        return
+      }
+      this.applyTraceThreshold(t)
+    }
 
     // The target pulling the plug on the player's own terminal. Checked
     // before the counter-hack so the two can never fire on the same tick.
@@ -1547,9 +1610,33 @@ export class Shell {
       return
     }
     if (kind === 'doc') {
+      const category = pickImageCategory(this.layers.current, this.rng)
+      // Occasionally a document draw, deep enough into a layer, escalates
+      // to the fullscreen beat instead of another small popup -- so
+      // "found something big" reads as a moment sometimes, not always the
+      // same little frame in the pile. Gated on document specifically:
+      // recon/location/corporate stay ambient texture, this is evidence.
+      if (category === 'document' && this.layers.tension > 0.55 && this.rng() < 0.18) {
+        const doc = pickAvailableDoc(this.rng, ['document'])
+        if (doc) {
+          showMediaOverlay(this.shellEl, {
+            src: docSrc(doc),
+            caption: doc.label,
+            kicker: 'INTERCEPTED',
+            rng: this.rng,
+          })
+          awardScore(this.state, 60)
+          store.emit('terminal:line', {
+            text: `>> intercepted :: ${doc.label}`,
+            tone: 'success',
+            speed: 1,
+          })
+          return
+        }
+      }
       // Returns false when no image has landed yet; fall back rather than
       // silently wasting the draw.
-      if (!spawnDocWindow(this.windows, this.rng, this.target.org)) {
+      if (!spawnDocWindow(this.windows, this.rng, this.target.org, [category])) {
         spawnProcessWindow(this.windows, this.content, this.layers.current, this.rng)
       }
       return
@@ -1611,6 +1698,25 @@ export class Shell {
     this.objective.setJob(`FOUND: ${this.contract.job.artifact} -- pull it`)
     // Guarantee a vault panel exists to carry it.
     this.director.spawn()
+    this.flashArtifactFound(this.contract.job.artifact)
+  }
+
+  /**
+   * The cinematic payoff for finding the objective file -- a fullscreen
+   * beat instead of another small popup lost in the pile, so the moment
+   * the job's actual goal appears reads as a moment rather than a line of
+   * scrolling text. Best-effort: if no image has landed yet this quietly
+   * does nothing, same as every other doc-image call site.
+   */
+  private flashArtifactFound(artifact: string): void {
+    const doc = pickAvailableDoc(this.rng, ['document'])
+    if (!doc) return
+    showMediaOverlay(this.shellEl, {
+      src: docSrc(doc),
+      caption: `${artifact} :: pull it to your vault`,
+      kicker: 'ARTIFACT LOCATED',
+      rng: this.rng,
+    })
   }
 
   /**
@@ -1692,6 +1798,10 @@ export class Shell {
       hostile: true,
       ttlMs: 9000,
     })
+    // The mirror of the webcam beat: their counter-intel has field photos
+    // of YOUR physical taps, not just a camera pointed at your desk.
+    // Best-effort -- silently does nothing if no recon image has landed.
+    spawnDocWindow(this.windows, this.rng, this.target.org, ['recon'], 'danger')
 
     this.reverseHack = new ReverseHack({
       manager: this.windows,
@@ -1702,6 +1812,8 @@ export class Shell {
       onBreach: () => {
         this.integrity.damage(INTEGRITY_COST.hostileExpired)
         this.heat.add(6)
+        this.trace.add(TRACE_GAIN.reverseHackLanded)
+        this.breakCombo()
       },
       onRepelled: () => {
         // Drop the reference only after tearing it down -- an instance the
@@ -1760,6 +1872,97 @@ export class Shell {
     this.endContract('burned', 3600)
   }
 
+  // -- Trace: the pursuit meter that never lets you rest -------------------
+
+  /** One-shot escalation beats as TRACE climbs. 100 is handled separately in onTick (it ends the run). */
+  private applyTraceThreshold(t: Exclude<TraceThreshold, 100>): void {
+    if (t === 50) {
+      spawnAllyMessage({ manager: this.windows, rng: this.rng, org: this.target.org, kind: 'incoming' })
+      store.emit('terminal:line', {
+        text: '!! a contact flags chatter about you -- someone is building a file',
+        tone: 'warning',
+        speed: 0,
+      })
+      return
+    }
+    if (t === 75) {
+      spawnWarningDialog(this.windows, {
+        title: 'PARTIAL TRACE',
+        message: `${this.target.org}'s incident response has a partial trace on your relay. Keep moving.`,
+        ttlMs: 5000,
+      })
+      spawnOperatorMessage({
+        manager: this.windows,
+        rng: this.rng,
+        org: this.target.org,
+        handle: this.state.handle,
+        tier: 2,
+      })
+      return
+    }
+    // 90
+    this.shellEl.classList.add('is-traced-critical')
+    this.later(() => this.shellEl.classList.remove('is-traced-critical'), 6000)
+    store.emit('terminal:line', {
+      text: '!!!! THEY ARE CLOSE -- one more mistake and this is over',
+      tone: 'danger',
+      speed: 0,
+    })
+    spawnOperatorMessage({
+      manager: this.windows,
+      rng: this.rng,
+      org: this.target.org,
+      handle: this.state.handle,
+      tier: 3,
+    })
+  }
+
+  /**
+   * TRACE hit 100: the case against you is complete.
+   *
+   * Ends the run in CASUAL and DEEP alike -- the explicit call was "deadly
+   * everywhere", not "deep mode only". INFINITE HACK has no ending to
+   * reach, so it rolls onto a fresh target instead, the same shape a lost
+   * manhunt or overrun would have no analogue there either.
+   */
+  private handleTraced(): void {
+    if (this.destroyed || this.inFinale) return
+    playSfx('alarm')
+    store.emit('terminal:line', {
+      text: `==== TRACED :: ${this.target.org} HAS YOUR IDENTITY ====`,
+      tone: 'danger',
+      speed: 1,
+    })
+    const doc = pickAvailableDoc(this.rng, ['recon'])
+    if (doc) {
+      showMediaOverlay(this.shellEl, {
+        src: docSrc(doc),
+        caption: 'they were watching longer than you thought',
+        kicker: 'TRACED',
+        rng: this.rng,
+      })
+    }
+    if (this.rollOverToNextTarget('TRACED -- BURN THE BOX')) return
+
+    this.fieldOp?.abort('traced')
+    this.reverseHack?.destroy()
+    this.reverseHack = null
+    this.manhunt?.destroy()
+    this.manhunt = null
+    this.closeGate()
+    this.endLevel()
+    this.director.clearAll()
+    this.explicitTarget = null
+    this.setTarget(null)
+    this.budget.reset()
+    for (const t of this.activeThreats) t.win.close()
+    this.activeThreats = []
+
+    this.objective.set('TRACED -- disconnecting')
+    this.showEndingBanner('TRACED')
+    this.endContract('burned', 3600)
+  }
+
   // -- Lockout: they kill YOUR terminal ----------------------------------
 
   /**
@@ -1782,6 +1985,8 @@ export class Shell {
     // answer it -- the board would simply never come back.
     this.closeGate()
     this.integrity.damage(INTEGRITY_COST.lockout)
+    this.trace.add(TRACE_GAIN.lockout)
+    this.breakCombo()
     this.reverseHack?.destroy()
     this.reverseHack = null
 
@@ -1929,6 +2134,7 @@ export class Shell {
     for (const t of this.activeThreats) t.win.close()
     this.activeThreats = []
 
+    this.trace.add(TRACE_GAIN.threatWaveLost)
     this.shellEl.classList.add('is-ejecting')
     setTimeout(() => this.shellEl.classList.remove('is-ejecting'), 500)
     this.targetSite?.flashDisconnected()
@@ -2027,6 +2233,7 @@ export class Shell {
         awardScore(this.state, 600)
         this.integrity.repair(30)
         this.heat.add(-50)
+        this.trace.relieve(TRACE_RELIEF.manhuntWon)
         store.emit('terminal:line', {
           text: '>>>> THEY LOST YOU. Get back to work.',
           tone: 'success',
@@ -2326,6 +2533,7 @@ export class Shell {
     this.bypassUntilMs = this.elapsedMs + 30_000
     this.heat.add(-45)
     this.integrity.repair(12)
+    this.trace.relieve(TRACE_RELIEF.tokenPurge)
     this.counterHack.defer(this.elapsedMs, 30_000)
     this.lockoutDirector.rearm(this.elapsedMs, 30_000)
     this.shellEl.classList.add('is-bypassing')
@@ -2360,6 +2568,7 @@ export class Shell {
       ttlMs: 3000,
     })
     this.heat.resetAfterCountermeasure()
+    this.breakCombo()
   }
 
   private handleBreakthrough(): void {
@@ -2381,6 +2590,7 @@ export class Shell {
     const bonus = 250 * depthIndex
     awardScore(this.state, bonus)
     this.heat.add(-30)
+    this.trace.relieve(TRACE_RELIEF.breakthrough)
 
     // Sweep the board, then reopen at the new depth -- the visible
     // "simplify, then get busy again" beat.
@@ -2442,6 +2652,18 @@ export class Shell {
   private showBreakthroughCard(next: LayerDef, depthIndex: number, bonus: number): void {
     const el = document.createElement('div')
     el.className = 'breakthrough-card'
+
+    // A faint, depth-tinted preview of where you are about to land --
+    // best-effort, and quietly absent if nothing in that category has
+    // landed on disk yet.
+    const backdropDoc = pickAvailableDoc(this.rng, [topImageCategory(next)])
+    if (backdropDoc) {
+      const backdrop = document.createElement('img')
+      backdrop.className = 'breakthrough-card__backdrop'
+      backdrop.src = docSrc(backdropDoc)
+      backdrop.alt = ''
+      el.appendChild(backdrop)
+    }
 
     const depth = document.createElement('div')
     depth.className = 'breakthrough-card__depth'
@@ -2653,6 +2875,7 @@ export class Shell {
     this.deepestThisRun = 'surface'
     this.heat.resetAfterCountermeasure(15)
     this.integrity.repair(40)
+    this.trace.reset()
     this.inFinale = false
     this.extracting = false
     this.ejecting = false

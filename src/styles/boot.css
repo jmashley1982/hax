@@ -93,6 +93,38 @@
   color: var(--accent-2);
 }
 
+/* The dossier's optional photo -- present only once a `location` image has
+   actually been probed and confirmed on disk. No reserved space when it
+   isn't: the mark alone is a complete RECON act on its own. */
+.boot__dossier {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.boot__dossier-frame {
+  align-self: flex-end;
+  width: min(100%, 260px);
+  border: 1px solid var(--panel-edge);
+  background: var(--bg-deep);
+}
+
+.boot__dossier-img {
+  display: block;
+  width: 100%;
+  max-height: 130px;
+  object-fit: cover;
+  filter: grayscale(0.15) contrast(1.05);
+}
+
+.boot__dossier-cap {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--fg-dim);
+  padding: 3px 6px;
+  border-top: 1px solid var(--panel-edge);
+}
+
 /* -- act 2: the hop chain and the exit nodes -------------------------- */
 
 .boot__chain {

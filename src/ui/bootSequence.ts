@@ -1,5 +1,6 @@
 import { int, pick, type Rng } from '@/core/rng'
 import { sectorLabel, type Contract } from '@/sim/contracts'
+import { docSrc, pickAvailableDoc } from '@/media/imageRegistry'
 
 /**
  * The connection sequence between JACK IN and the board.
@@ -181,11 +182,45 @@ export class BootSequence {
     this.skip.textContent = 'PRESS ANY KEY TO SKIP'
     this.setProgress(0.06)
 
-    this.stage.replaceChildren(this.buildMark())
+    const dossier = this.buildDossier()
+    this.stage.replaceChildren(dossier)
     this.stream(this.reconLines(handle), RECON_LINE_MS, () => {
       this.setProgress(0.34)
       this.startRelay()
     })
+  }
+
+  /**
+   * The mark plus, best-effort, a shot of the building itself.
+   *
+   * The image side is entirely optional: `pickAvailableDoc` returns null
+   * until at least one `location` image has been probed and confirmed
+   * present (see App's early `preloadDocs()` call), and a run started
+   * before that finishes simply gets the mark alone -- no reserved space,
+   * no placeholder, exactly like every other doc-image call site in this
+   * game.
+   */
+  private buildDossier(): HTMLElement {
+    const wrap = document.createElement('div')
+    wrap.className = 'boot__dossier'
+    wrap.appendChild(this.buildMark())
+
+    const doc = pickAvailableDoc(this.opts.rng, ['location'])
+    if (doc) {
+      const frame = document.createElement('div')
+      frame.className = 'boot__dossier-frame'
+      const img = document.createElement('img')
+      img.className = 'boot__dossier-img'
+      img.src = docSrc(doc)
+      img.alt = ''
+      img.addEventListener('error', () => frame.remove(), { once: true })
+      const cap = document.createElement('div')
+      cap.className = 'boot__dossier-cap'
+      cap.textContent = doc.label
+      frame.append(img, cap)
+      wrap.appendChild(frame)
+    }
+    return wrap
   }
 
   /** The org as an object on screen: monogram, sector, tier pips. */

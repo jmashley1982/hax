@@ -43,11 +43,25 @@ export interface GameState {
   heat: number // 0..100, detection meter
   /** 0..100, the player's OWN machine's security posture. Heat is how much they notice you; this is how intact you are. */
   integrity: number
+  /**
+   * 0..100, the run-level pursuit meter. Unlike heat, this NEVER decays on
+   * its own -- it only falls when something earns it back (a breakthrough,
+   * a won manhunt). At 100 the run is TRACED. Per-run, like heat and
+   * integrity: reset at the start of every contract, never persisted.
+   */
+  trace: number
   score: number
   /** Operator handle, set on the dashboard and used by in-fiction messages. */
   handle: string
   /** Career totals, kept across contracts and persisted. */
   contractsRun: number
+  /**
+   * What the payouts actually add up to -- "gotta pay the bills" made
+   * visible as a running total distinct from score, which the arcade wall
+   * already owns. There is no shop this spends into (yet); it exists to
+   * make the fiction's stakes a number you can watch grow.
+   */
+  credits: number
   deepestLayer: LayerId
   missionId: string | null
   objectiveId: string | null
@@ -71,9 +85,11 @@ export function createInitialState(seedLabel?: string): GameState {
     layer: 'surface',
     heat: 0,
     integrity: 100,
+    trace: 0,
     score: 0,
     handle: 'operator',
     contractsRun: 0,
+    credits: 0,
     deepestLayer: 'surface',
     missionId: null,
     objectiveId: null,
@@ -131,6 +147,9 @@ export function applySavedCareer(state: GameState): void {
   if (typeof saved.score === 'number' && Number.isFinite(saved.score)) state.score = saved.score
   if (typeof saved.contractsRun === 'number' && Number.isFinite(saved.contractsRun)) {
     state.contractsRun = saved.contractsRun
+  }
+  if (typeof saved.credits === 'number' && Number.isFinite(saved.credits)) {
+    state.credits = saved.credits
   }
   if (typeof saved.deepestLayer === 'string' && LAYER_ORDER.includes(saved.deepestLayer)) {
     state.deepestLayer = saved.deepestLayer

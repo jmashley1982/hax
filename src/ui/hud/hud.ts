@@ -17,9 +17,14 @@ export class Hud {
   private breachFill: HTMLElement
   private heatFill: HTMLElement
   private heatValue: HTMLElement
+  private traceFill!: HTMLElement
+  private traceValue!: HTMLElement
   private scoreValue: HTMLElement
   private ladderEl!: HTMLElement
   private tokensEl!: HTMLElement
+  private comboEl!: HTMLElement
+  /** Last combo count actually painted, so render() can tell a NEW clear from the same one redrawn every tick. */
+  private lastCombo = 0
 
   constructor(
     mountPoint: HTMLElement,
@@ -29,6 +34,8 @@ export class Hud {
     private pouch?: TokenPouch,
     private onSpendToken?: (token: Token) => void,
     private getSystemKind?: () => string,
+    /** Consecutive clean panel clears (shell.ts's comboCount) -- optional, same rule as the other soft-coupled getters here. */
+    private getCombo?: () => number,
   ) {
     this.el = document.createElement('div')
     this.el.className = 'hud'
@@ -103,12 +110,37 @@ export class Hud {
     this.integrityValue.className = 'hud__value'
     intRow.append(intLabel, intBar, this.integrityValue)
 
+    // TRACE: the run-level pursuit meter (sim/trace.ts). It never falls on
+    // its own the way heat and integrity do, so it gets its own row rather
+    // than sharing one -- a bar that only ever climbs reads very
+    // differently from one that breathes.
+    const traceRow = document.createElement('div')
+    traceRow.className = 'hud__row'
+    const traceLabel = document.createElement('span')
+    traceLabel.className = 'hud__label'
+    traceLabel.textContent = 'TRACE'
+    const traceBar = document.createElement('div')
+    traceBar.className = 'hud__heatbar'
+    this.traceFill = document.createElement('div')
+    this.traceFill.className = 'hud__heatbar-fill hud__heatbar-fill--trace'
+    traceBar.appendChild(this.traceFill)
+    this.traceValue = document.createElement('span')
+    this.traceValue.className = 'hud__value'
+    traceRow.append(traceLabel, traceBar, this.traceValue)
+
+    // The streak chip. Lives beside the score, since it is score's
+    // multiplier made visible -- not with the pressure meters below, which
+    // are about danger rather than reward.
+    this.comboEl = document.createElement('span')
+    this.comboEl.className = 'hud__combo'
+    scoreRow.appendChild(this.comboEl)
+
     // Earned tokens sit directly under the meters: they are spent in
     // response to what those meters are doing, so they belong next to them.
     this.tokensEl = document.createElement('div')
     this.tokensEl.className = 'tokens'
 
-    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow, intRow)
+    this.el.append(scoreRow, this.ladderEl, layerRow, breachRow, heatRow, intRow, traceRow)
     // The rack is a SIBLING of the HUD, not a child.
     //
     // Inside the HUD it anchored to the HUD's own box, which sits wherever
@@ -154,11 +186,43 @@ export class Hud {
       step.classList.toggle('is-current', idx === currentIdx)
     }
 
+    if (this.getCombo) {
+      const combo = this.getCombo()
+      if (combo === 0) {
+        this.comboEl.classList.remove('is-live')
+        if (this.lastCombo > 0) {
+          // A streak just broke -- one flash, then the chip goes quiet
+          // rather than lingering as a "0" that means nothing.
+          this.comboEl.classList.remove('is-break')
+          void this.comboEl.offsetWidth
+          this.comboEl.classList.add('is-break')
+        }
+      } else {
+        const mult = 1 + Math.min(combo, 8) * 0.25
+        this.comboEl.textContent = `x${mult.toFixed(2)}`
+        this.comboEl.classList.add('is-live')
+        this.comboEl.classList.remove('is-break')
+        if (combo > this.lastCombo) {
+          // Restart the pop on every new clear, including back-to-back ones.
+          this.comboEl.classList.remove('is-pop')
+          void this.comboEl.offsetWidth
+          this.comboEl.classList.add('is-pop')
+        }
+      }
+      this.lastCombo = combo
+    }
+
     const heat = Math.round(this.state.heat)
     this.heatValue.textContent = `${heat}%`
     this.heatFill.style.width = `${heat}%`
     this.heatFill.classList.toggle('is-warn', heat >= 55 && heat < 88)
     this.heatFill.classList.toggle('is-critical', heat >= 88)
+
+    const trace = Math.round(this.state.trace)
+    this.traceValue.textContent = `${trace}%`
+    this.traceFill.style.width = `${trace}%`
+    this.traceFill.classList.toggle('is-warn', trace >= 50 && trace < 90)
+    this.traceFill.classList.toggle('is-critical', trace >= 90)
   }
 
   /**

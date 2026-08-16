@@ -87,6 +87,12 @@ export interface PlayModeProfile {
    */
   idleDrainPerSec: number
   idleGraceMs: number
+
+  // -- the pursuit meter (sim/trace.ts) ------------------------------------
+  /** Multiplies every TRACE gain. The run-ending stakes, tuned per mode. */
+  traceRate: number
+  /** Multiplies the run's final score at debrief -- DEEP HACK's payoff for playing without a net. */
+  scoreMul: number
 }
 
 export const PLAY_MODES: Record<PlayMode, PlayModeProfile> = {
@@ -117,6 +123,8 @@ export const PLAY_MODES: Record<PlayMode, PlayModeProfile> = {
     reverseRate: 0.5,
     idleDrainPerSec: 0,
     idleGraceMs: 0,
+    traceRate: 0.6,
+    scoreMul: 1,
   },
   /**
    * The game. Pressure sits where L337 H4X0R sat, because that was always
@@ -144,19 +152,23 @@ export const PLAY_MODES: Record<PlayMode, PlayModeProfile> = {
     reverseRate: 1,
     idleDrainPerSec: 0,
     idleGraceMs: 0,
+    traceRate: 1,
+    scoreMul: 1,
   },
   /**
-   * Not built. The coefficients are real so the profile can be tuned and
-   * typechecked alongside the others, but `available: false` keeps it off
-   * the board until it has a design of its own -- shipping it as "CASUAL
-   * but the numbers are bigger" is the mistake this whole round exists to
-   * undo.
+   * No safety net. Three coefficients are what make this a different game
+   * rather than CASUAL with bigger numbers, same rule as the flag pair at
+   * the top of this file: `idleDrainPerSec` already existed and was
+   * unreachable with `available: false`; `traceRate` runs the pursuit
+   * meter hot instead of at CASUAL's pace; `scoreMul` is the payoff for
+   * playing where TRACE hitting 100 costs you the run same as anywhere
+   * else, but standing still costs you too.
    */
   deep: {
     id: 'deep',
     label: 'DEEP HACK',
-    blurb: 'coming soon.',
-    available: false,
+    blurb: 'no safety net. stop moving and they find you. trace runs hot. double stakes.',
+    available: true,
     levelled: true,
     endless: false,
     keyGain: 1.2,
@@ -177,6 +189,8 @@ export const PLAY_MODES: Record<PlayMode, PlayModeProfile> = {
     // walking away, not thinking.
     idleDrainPerSec: 4.5,
     idleGraceMs: 4000,
+    traceRate: 1.6,
+    scoreMul: 2,
   },
 }
 

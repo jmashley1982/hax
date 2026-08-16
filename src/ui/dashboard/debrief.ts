@@ -110,11 +110,7 @@ export class Debrief {
     payoutBox.append(
       payoutLine('EARNED', String(outcome.scoreEarned)),
       payoutLine('TIER MULTIPLIER', `x${contract.reward.toFixed(2)}`),
-      payoutLine(
-        'PAYOUT',
-        String(payout),
-        true,
-      ),
+      payoutLine('PAYOUT', `${payout} CR`, true),
     )
 
     const grade = document.createElement('div')

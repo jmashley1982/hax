@@ -20,6 +20,7 @@ import '@/styles/messenger.css'
 import '@/styles/desktop.css'
 import '@/styles/lockout.css'
 import '@/styles/gate.css'
+import '@/styles/media-overlay.css'
 // After every surface it hides, so a chrome rule never loses to the
 // stylesheet that defined the thing -- import order is cascade priority
 // here, and this file's whole job is to override.

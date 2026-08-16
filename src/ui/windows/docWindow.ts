@@ -1,6 +1,21 @@
 import { int, type Rng } from '@/core/rng'
-import { docShape, docSrc, pickAvailableDoc, type DocShape } from '@/media/imageRegistry'
+import {
+  docShape,
+  docSrc,
+  pickAvailableDoc,
+  type DocShape,
+  type ImageCategory,
+} from '@/media/imageRegistry'
+import { showMediaOverlay } from '@/ui/mediaOverlay'
 import type { WindowManager } from './manager'
+
+/** Title framing per category -- what kind of find this reads as. */
+const TITLE_BY_CATEGORY: Record<ImageCategory, string> = {
+  document: 'RECOVERED',
+  recon: 'FIELD PHOTO',
+  location: 'SITE RECON',
+  corporate: 'OSINT',
+}
 
 /**
  * A document recovered off the target's servers.
@@ -22,8 +37,22 @@ const SPAN_BY_SHAPE: Record<DocShape, { cols: number; rows: number }> = {
   square: { cols: 1, rows: 1 },
 }
 
-export function spawnDocWindow(manager: WindowManager, rng: Rng, org: string): boolean {
-  const doc = pickAvailableDoc(rng)
+/**
+ * @param categories Narrow the draw to specific categories (e.g. the
+ *   reverse-hack recon beat forces `['recon']`). Omitted, any present
+ *   image is fair game -- callers ambient-spawning off a layer's mix pass
+ *   the category `pickImageCategory` already rolled.
+ * @param decor Passed straight through to the window -- 'danger' is what
+ *   lets the reverse-hack beat read as hostile chrome, not a normal find.
+ */
+export function spawnDocWindow(
+  manager: WindowManager,
+  rng: Rng,
+  org: string,
+  categories?: readonly ImageCategory[],
+  decor: 'normal' | 'danger' = 'normal',
+): boolean {
+  const doc = pickAvailableDoc(rng, categories)
   if (!doc) return false
 
   // The library used to be uniformly 9:16 and this was hardcoded to 1x2.
@@ -33,10 +62,10 @@ export function spawnDocWindow(manager: WindowManager, rng: Rng, org: string): b
   const shape = docShape(doc)
   const win = manager.spawn(
     {
-      title: `RECOVERED :: ${org.toUpperCase()}`,
+      title: `${TITLE_BY_CATEGORY[doc.category]} :: ${org.toUpperCase()}`,
       modal: false,
       closable: true,
-      decor: 'normal',
+      decor,
       span: SPAN_BY_SHAPE[shape],
     },
     'random',
@@ -54,11 +83,24 @@ export function spawnDocWindow(manager: WindowManager, rng: Rng, org: string): b
   img.alt = ''
   // Probed already, but a decode failure here must not leave an empty box.
   img.addEventListener('error', () => win.close(), { once: true })
+  // The lightbox: the small popup is not the only way to see this image.
+  img.addEventListener('click', () => {
+    const mount = document.querySelector('.shell') as HTMLElement | null
+    if (!mount) return
+    showMediaOverlay(mount, {
+      src: docSrc(doc),
+      caption: doc.label,
+      kicker: TITLE_BY_CATEGORY[doc.category],
+      rng,
+    })
+  })
   frame.appendChild(img)
 
   const cap = document.createElement('div')
   cap.className = 'docwin__caption'
-  cap.textContent = `${doc.file}  --  ${doc.label}`
+  // Just the label -- a raw filename like `recon-07-building-at-night.jpg`
+  // in the caption breaks the fiction the label exists to build.
+  cap.textContent = doc.label
 
   body.append(frame, cap)
   win.setBody(body)

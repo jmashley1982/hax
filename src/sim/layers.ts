@@ -1,6 +1,7 @@
 import type { Rng } from '@/core/rng'
 import type { GameState, LayerId } from '@/core/state'
 import { LAYER_ORDER } from '@/core/state'
+import type { ImageCategory } from '@/media/imageRegistry'
 
 /**
  * The depth-progression system, pulled forward after the first playtest
@@ -129,6 +130,18 @@ export interface LayerDef {
    * authored content people made on purpose.
    */
   ambientMix: Readonly<Partial<Record<AmbientKind, number>>>
+  /**
+   * Relative weight per recovered-image category, for when ambientMix rolls
+   * 'doc'. A missing key means zero, same rule as ambientMix -- and see
+   * IMAGE_CATEGORIES for why this must never be iterated with
+   * Object.entries() either.
+   *
+   * SURFACE leans recon and location because you are outside looking in;
+   * INTRANET leans document because a corporate LAN is paper; PHYSICAL
+   * leans location and recon because you are, at that point, at the
+   * building.
+   */
+  imageMix: Readonly<Partial<Record<ImageCategory, number>>>
 }
 
 export type LayerModifier =
@@ -166,6 +179,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifierText: 'open network -- no countermeasures',
     systemKind: 'public net',
     ambientMix: { news: 4, geo: 3, cam: 3, doc: 2, process: 2, ally: 2, operator: 1, xfer: 2 },
+    imageMix: { recon: 5, location: 3, corporate: 2, document: 1 },
   },
   perimeter: {
     id: 'perimeter',
@@ -188,6 +202,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifierText: 'nodes arrive SEALED -- click once to break the seal',
     systemKind: 'edge appliance',
     ambientMix: { process: 5, cam: 4, doc: 3, operator: 3, ally: 2, news: 1, geo: 1, xfer: 3 },
+    imageMix: { recon: 4, document: 3, location: 2, corporate: 1 },
   },
   intranet: {
     id: 'intranet',
@@ -210,6 +225,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifierText: 'idle nodes DECAY -- keep rotating between them',
     systemKind: 'corporate lan',
     ambientMix: { doc: 7, cam: 4, process: 3, geo: 3, news: 2, ally: 2, operator: 2, xfer: 4 },
+    imageMix: { document: 7, corporate: 2, recon: 1 },
   },
   core: {
     id: 'core',
@@ -232,6 +248,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifierText: 'nodes are LINKED -- cracking one advances its twin',
     systemKind: 'data centre',
     ambientMix: { doc: 6, cam: 5, process: 5, operator: 3, geo: 2, news: 2, xfer: 3 },
+    imageMix: { document: 6, recon: 2, location: 1 },
   },
   kernel: {
     id: 'kernel',
@@ -254,6 +271,7 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifierText: 'you are HUNTED -- traces incoming, block them',
     systemKind: 'bare metal',
     ambientMix: { process: 6, cam: 5, operator: 4, doc: 3, news: 2, stream: 2, xfer: 2 },
+    imageMix: { document: 4, recon: 3, location: 2 },
   },
   physical: {
     id: 'physical',
@@ -279,7 +297,42 @@ const LAYER_DEFS: Record<LayerId, LayerDef> = {
     modifierText: 'FULL LOCKDOWN -- everything at once',
     systemKind: 'the building',
     ambientMix: { cam: 8, stream: 4, doc: 3, geo: 2, process: 2, operator: 1, xfer: 2 },
+    imageMix: { location: 5, recon: 4, document: 2 },
   },
+}
+
+/**
+ * Canonical iteration order for the image-category picker. Same rule as
+ * AMBIENT_KINDS: NEVER reorder, only append, or `?seed=` reproducibility
+ * breaks for every existing seed the moment this list's order changes.
+ */
+export const IMAGE_CATEGORIES: readonly ImageCategory[] = ['document', 'recon', 'location', 'corporate']
+
+/** The single heaviest-weighted category in a layer's mix -- used for one-shot decoration (e.g. the breakthrough card backdrop), not for the ambient draw itself. */
+export function topImageCategory(def: LayerDef): ImageCategory {
+  let best: ImageCategory = 'document'
+  let bestWeight = -1
+  for (const c of IMAGE_CATEGORIES) {
+    const w = def.imageMix[c] ?? 0
+    if (w > bestWeight) {
+      bestWeight = w
+      best = c
+    }
+  }
+  return best
+}
+
+/** Draw an image category from a layer's mix. Same shape as pickAmbientKind. */
+export function pickImageCategory(def: LayerDef, rng: Rng): ImageCategory {
+  let total = 0
+  for (const c of IMAGE_CATEGORIES) total += def.imageMix[c] ?? 0
+  if (total <= 0) return 'document'
+  let roll = rng() * total
+  for (const c of IMAGE_CATEGORIES) {
+    roll -= def.imageMix[c] ?? 0
+    if (roll <= 0) return c
+  }
+  return 'document'
 }
 
 /** Panel types available at a given depth -- cumulative across all shallower layers. */

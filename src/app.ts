@@ -8,6 +8,8 @@ import { BootSequence } from '@/ui/bootSequence'
 import { mulberry32 } from '@/core/rng'
 import type { Contract } from '@/sim/contracts'
 import { audio } from '@/audio/engine'
+import { preloadDocs } from '@/media/imageRegistry'
+import { PLAY_MODES } from '@/core/progress'
 
 /**
  * App-level mode machine: dashboard <-> session (plan §16A).
@@ -31,6 +33,11 @@ export class App {
 
   constructor(private root: HTMLElement, private state: GameState) {
     applySavedCareer(state)
+    // Warmed here rather than only in Shell's constructor: the boot
+    // sequence's dossier card wants a location image within its ~1.2s
+    // RECON act, and probeDoc results are cached by filename, so starting
+    // the probe this early costs nothing and gives it a real head start.
+    preloadDocs()
     this.showDashboard()
   }
 
@@ -117,8 +124,13 @@ export class App {
       },
     })
     // The tier multiplier is banked as career score here, so choosing a
-    // hard contract visibly pays more than an easy one.
-    this.state.score += this.debrief.payout
+    // hard contract visibly pays more than an easy one. DEEP HACK's
+    // scoreMul is the payoff for playing without a net -- applied at the
+    // one place a run's payout becomes career total, not scattered across
+    // every awardScore() call during play.
+    const banked = Math.round(this.debrief.payout * PLAY_MODES[this.state.mode].scoreMul)
+    this.state.score += banked
+    this.state.credits += banked
     saveState(this.state)
   }
 

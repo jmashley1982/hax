@@ -21,7 +21,11 @@ only source of truth, and nothing else in the code needs to change.
 - Roughly **5 seconds** is ideal — popups live for 7–13 seconds, so a short
   loop reads as a live feed rather than a clip that ends.
 - Small is good. These are shown in a ~260×150 window, so anything above
-  ~720p is wasted bytes. A few hundred KB each keeps the whole build light.
+  ~720p is wasted bytes. A few hundred KB each keeps the whole build light
+  — the current 17 clips average well under 200KB (640px wide, crf 30, no
+  audio track) after being re-encoded from much heavier camera-app
+  originals, which are kept in `/archive/video-originals/` per the
+  no-delete rule rather than thrown away.
 
 ## Missing files are fine
 

@@ -444,6 +444,28 @@
   .shell.is-integrity-critical::before { animation: none; }
 }
 
+/* TRACE at 90+: one more mistake ends the run. A different edge from
+   integrity-critical (amber sweep, not a red pulse) since the two mean
+   different things and can be live at the same time. */
+.shell.is-traced-critical::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 541;
+  pointer-events: none;
+  box-shadow: inset 0 0 130px rgba(255, 179, 57, 0.55);
+  animation: trace-alarm 1.6s ease-in-out infinite;
+}
+
+@keyframes trace-alarm {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-traced-critical::after { animation: none; }
+}
+
 /* ---- recovered documents ---- */
 
 /*

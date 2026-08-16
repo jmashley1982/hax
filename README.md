@@ -51,18 +51,30 @@ Click a window to aim at it deliberately.
 |---|---|
 | **INFINITE HACK** | Never ends. Crossing the deepest layer rolls straight into a fresh target. No objectives, no gates — the fidget-toy mode. ESC or refresh to stop. |
 | **CASUAL HACK** | The game. Six depth layers, each with its own objective and its own required tool, plus blocking gates that stop the world until you deal with them. Scored, with an arcade high-score wall. |
-| **DEEP HACK** | Coming soon. |
+| **DEEP HACK** | No safety net. TRACE runs hot, standing still bleeds your own integrity, and the payout is doubled. |
 
 Failing a gate costs you — integrity, heat, and ground on the objective —
 but it never ends the run.
+
+**TRACE** is the meter that does. Unlike heat (which decays every second)
+or integrity (which regenerates in clean play), TRACE only ever climbs —
+from failed gates, lost waves, lockouts, a reverse hack that lands — and
+only falls when you earn it back: a breakthrough, a won manhunt, a spent
+TROJAN BYPASS. At 100 you're **TRACED**, and in CASUAL and DEEP alike that
+ends the run. (INFINITE HACK has no ending to reach, so it burns the box
+and rolls you onto a fresh target instead.)
+
+Clean panel clears chain into a **COMBO** — up to ×3 on a streak of eight —
+shown next to your score. Any hostile hit, a failed gate, or a lockout
+breaks it. Typing fast and clean is worth more than typing fast.
 
 Watch the **RELAY :: CONTACTS** panel. Most of the chatter is nothing. Some
 of it is a contact handing you the session key for a lock you have not hit
 yet, and when that happens the lock opens in one click instead of twelve
 frantic seconds. That is the one message type worth reading every time.
 
-**ESC** aborts a contract you have lost control of. Your career score is
-kept.
+**ESC** aborts a contract you have lost control of. Your career score, and
+the CR every payout adds to it, are both kept.
 
 ---
 
@@ -135,25 +147,31 @@ compose; they do not fight.
 
 ### Images
 
-Drop files into `public/images/` as `docs-01` … `docs-24`, `.jpg` or
-`.png`. They surface in-game as popup windows framed as documents pulled
-off the target's servers.
+Drop a file into `public/images/` and add one line to `DOC_IMAGES` in
+`src/media/imageRegistry.ts` — filename, a provenance caption, and a
+**category**: `document` (paper trail), `recon` (amateur field photos),
+`location` (the building itself), or `corporate` (the target's own
+polish). The category decides the popup's title and which depth layers
+favour it — see `public/images/README.md` for the full breakdown.
 
-Missing slots are skipped silently — add them one at a time, in any order.
-**Any shape works:** each image is measured when it loads and claims the
-window it needs (tall → 1×2, wide → 2×1, square → 1×1). A mixed library is
-the point; it is what puts windows of several sizes on the desktop at once.
+Missing entries are skipped silently — add them one at a time, in any
+order. **Any shape works:** each image is measured when it loads and
+claims the window it needs (tall → 1×2, wide → 2×1, square → 1×1). A mixed
+library is the point; it is what puts windows of several sizes on the
+desktop at once.
 
-Captions are in `src/media/imageRegistry.ts`. They are written as
-provenance ("recovered from a wiped laptop"), so a caption that does not
-match its image reads as a bug.
+Most recovered images stay small popups, but a few moments go big: finding
+the contract's objective file, an occasional intercepted document mid-run,
+the boot sequence's target dossier, and any image you click on all open in
+a full-screen beat (`src/ui/mediaOverlay.ts`) rather than staying a
+260px-wide window.
 
 ### Video
 
 Drop clips into `public/video/`. Camera windows use them for CCTV feeds and
 public-livestream framings. Where no clip fits, the game renders synthetic
 footage on a canvas instead — so the camera beats work with an empty
-folder, and get better as you fill it. See `public/video/manifest.json`.
+folder, and get better as you fill it. See `public/video/README.md`.
 
 ---
 
@@ -168,9 +186,10 @@ all of it.
 src/
   core/      rng (seeded), store, clock, input, state, progress, high scores
   content/   template grammar + authored banks -> the anti-repetition engine
-  sim/       layers, levels, contracts, heat, integrity, threats, director
-  ui/        shell, desktop regions, windows, task panels, HUD, dashboard
-  media/     image + video registries, entity graph, street map
+  sim/       layers, levels, contracts, heat, integrity, trace, threats, director
+  ui/        shell, desktop regions, windows, task panels, HUD, dashboard,
+             mediaOverlay (the full-screen image beat)
+  media/     categorized image + video registries, entity graph, street map
   audio/     Web Audio synthesis (no audio files)
   film/      film mode + autopilot
   fx/        CRT, glitch, noise, transitions
