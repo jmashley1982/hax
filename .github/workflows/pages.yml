@@ -1,14 +1,12 @@
 name: Deploy to GitHub Pages
 
 # Builds the static site and publishes it via GitHub Pages. Triggers on
-# push to this branch (which is currently the repository's only/default
-# branch -- update the `branches` list below if you later merge this work
-# into `main` and want deploys to follow that instead), plus a manual
+# push to main -- the repository's default branch -- plus a manual
 # trigger for re-deploying without a new commit.
 on:
   push:
     branches:
-      - claude/elite-hacker-website-cmkh77
+      - main
   workflow_dispatch:
 
 # Least-privilege token scope for the Pages deployment API.
