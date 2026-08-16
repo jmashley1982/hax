@@ -36,30 +36,30 @@ export interface DocImage {
  * entire installation procedure.
  */
 export const DOC_IMAGES: readonly DocImage[] = [
-  { file: 'docs-01.png', label: 'recovered from /var/backups', category: 'document' },
-  { file: 'docs-02.png', label: 'attachment :: internal mail spool', category: 'document' },
-  { file: 'docs-03.png', label: 'scanned :: records room', category: 'document' },
-  { file: 'docs-04.png', label: 'recovered from a deleted share', category: 'document' },
-  { file: 'docs-05.png', label: 'attachment :: legal hold archive', category: 'document' },
-  { file: 'docs-06.png', label: 'pulled from an executive laptop', category: 'document' },
-  { file: 'docs-07.png', label: 'recovered :: badge system export', category: 'document' },
-  { file: 'docs-08.png', label: 'attachment :: vendor correspondence', category: 'document' },
-  { file: 'docs-09.png', label: 'scanned :: physical file cabinet', category: 'document' },
-  { file: 'docs-10.png', label: 'recovered :: finance share', category: 'document' },
-  { file: 'docs-11.png', label: 'screen capture :: engineering workstation', category: 'document' },
-  { file: 'docs-12.png', label: 'attachment :: procurement thread', category: 'document' },
-  { file: 'docs-13.png', label: 'recovered from a wiped laptop', category: 'document' },
-  { file: 'docs-14.png', label: 'scanned :: site drawing set', category: 'document' },
-  { file: 'docs-15.png', label: 'pulled from a shared drive', category: 'document' },
-  { file: 'docs-16.png', label: 'attachment :: board correspondence', category: 'document' },
-  { file: 'docs-17.png', label: 'recovered :: access control export', category: 'document' },
-  { file: 'docs-18.png', label: 'photographed :: desk, out of hours', category: 'document' },
-  { file: 'docs-19.png', label: 'scanned :: shipping manifests', category: 'document' },
-  { file: 'docs-20.png', label: 'recovered from an offsite backup', category: 'document' },
-  { file: 'docs-21.png', label: 'screen capture :: operations console', category: 'document' },
-  { file: 'docs-22.png', label: 'attachment :: personnel file', category: 'document' },
-  { file: 'docs-23.png', label: 'recovered :: contractor handover', category: 'document' },
-  { file: 'docs-24.png', label: 'photographed :: whiteboard, floor 3', category: 'document' },
+  { file: 'docs-01.jpg', label: 'recovered from /var/backups', category: 'document' },
+  { file: 'docs-02.jpg', label: 'attachment :: internal mail spool', category: 'document' },
+  { file: 'docs-03.jpg', label: 'scanned :: records room', category: 'document' },
+  { file: 'docs-04.jpg', label: 'recovered from a deleted share', category: 'document' },
+  { file: 'docs-05.jpg', label: 'attachment :: legal hold archive', category: 'document' },
+  { file: 'docs-06.jpg', label: 'pulled from an executive laptop', category: 'document' },
+  { file: 'docs-07.jpg', label: 'recovered :: badge system export', category: 'document' },
+  { file: 'docs-08.jpg', label: 'attachment :: vendor correspondence', category: 'document' },
+  { file: 'docs-09.jpg', label: 'scanned :: physical file cabinet', category: 'document' },
+  { file: 'docs-10.jpg', label: 'recovered :: finance share', category: 'document' },
+  { file: 'docs-11.jpg', label: 'screen capture :: engineering workstation', category: 'document' },
+  { file: 'docs-12.jpg', label: 'attachment :: procurement thread', category: 'document' },
+  { file: 'docs-13.jpg', label: 'recovered from a wiped laptop', category: 'document' },
+  { file: 'docs-14.jpg', label: 'scanned :: site drawing set', category: 'document' },
+  { file: 'docs-15.jpg', label: 'pulled from a shared drive', category: 'document' },
+  { file: 'docs-16.jpg', label: 'attachment :: board correspondence', category: 'document' },
+  { file: 'docs-17.jpg', label: 'recovered :: access control export', category: 'document' },
+  { file: 'docs-18.jpg', label: 'photographed :: desk, out of hours', category: 'document' },
+  { file: 'docs-19.jpg', label: 'scanned :: shipping manifests', category: 'document' },
+  { file: 'docs-20.jpg', label: 'recovered from an offsite backup', category: 'document' },
+  { file: 'docs-21.jpg', label: 'screen capture :: operations console', category: 'document' },
+  { file: 'docs-22.jpg', label: 'attachment :: personnel file', category: 'document' },
+  { file: 'docs-23.jpg', label: 'recovered :: contractor handover', category: 'document' },
+  { file: 'docs-24.jpg', label: 'photographed :: whiteboard, floor 3', category: 'document' },
 
   // -- document: paper trail, ledgers, letters, microfilm -----------------
   { file: 'doc-25-redacted-memo.jpg', label: 'recovered :: internal memo, redacted', category: 'document' },
@@ -141,6 +141,17 @@ const availability = new Map<string, boolean>()
 const resolvedFile = new Map<string, string>()
 const inFlight = new Map<string, Promise<boolean>>()
 
+/**
+ * The declared filename first, then the other extension as a fallback.
+ *
+ * DECLARE THE EXTENSION THE FILE ACTUALLY HAS. The fallback exists so a
+ * hand-dropped `.png` still works where `.jpg` was declared, not as a
+ * licence to guess -- every wrong guess is a real network round-trip that
+ * has to fail before the right file is even requested. The 24 `docs-NN`
+ * entries were declared `.png` while shipping as `.jpg`, which cost 24
+ * failed requests on every page load; harmless against a host that 404s
+ * cheaply, ~8.5MB against one that answers misses with an HTML page.
+ */
 function candidates(file: string): string[] {
   const alt = file.endsWith('.png')
     ? file.replace(/\.png$/, '.jpg')

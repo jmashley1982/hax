@@ -8,7 +8,7 @@ A browser-based elite-hacker simulator. Two things at once, on purpose:
   chrome-free mode, adjustable pacing, cued beats, an unattended autopilot,
   and deterministic playback so takes match.
 
-Play it at **https://jmashley1982.github.io/hax/**
+Play it at **https://hax.jmashley1982.workers.dev**
 
 ---
 
@@ -206,7 +206,21 @@ Two rules the codebase actually enforces:
 
 ## Deploying
 
-`.github/workflows/pages.yml` builds and publishes `dist/` to GitHub Pages
-on every push to the default branch. Nothing else is required — `base` is
-already relative, so it works at a subpath, at a domain root, or from a
-folder on a stick.
+Hosted as a **Cloudflare Worker** serving static assets. Pushing to `main`
+builds and deploys automatically; the config lives in `wrangler.jsonc`.
+`base` is relative, so the same `dist/` also works at a subpath, at a
+domain root, or from a folder on a stick.
+
+One setting in there is load-bearing and easy to get wrong:
+`assets.not_found_handling` is `"none"`, **not** `"single-page-application"`.
+This app is one page with no client-side router, and both media registries
+probe for files that may legitimately be absent (`docs-NN.png` before
+`.jpg`; 20 declared camera slots against 17 present clips). SPA handling
+answers every one of those misses with a 200 and the whole ~354kB
+`index.html` — measured at ~9MB of wasted downloads per page load, more
+than the real media payload. `"none"` gives the probes the 404 they are
+written to expect.
+
+An earlier GitHub Pages workflow is kept at `archive/pages.yml.superseded`.
+It is out of `.github/workflows/` so it no longer runs — two hosts
+publishing the same game from one push meant two live URLs drifting apart.

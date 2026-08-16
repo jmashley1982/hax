@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hax",
+  "compatibility_date": "2026-08-16",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    /*
+     * NOT a single-page application, despite being one HTML file.
+     *
+     * Wrangler's auto-setup guessed "single-page-application" because the
+     * build emits one index.html. That guess is actively harmful here: SPA
+     * handling answers EVERY unmatched path with a 200 and the full ~354kB
+     * index.html, and this game deliberately probes for files that may not
+     * exist -- media/imageRegistry.ts tries `docs-NN.png` before `.jpg`,
+     * and media/videoRegistry.ts declares 20 camera slots when only 17
+     * clips are present. Measured on the first Worker deploy: 27 misses x
+     * 354kB = ~9MB of pointless HTML downloaded on every single page load,
+     * more than the entire real media payload.
+     *
+     * "none" gives those probes a real 404, which is what both registries
+     * are written to expect (they use an Image()/<video> load rather than
+     * fetch precisely so they work under file:// too). `/` still serves
+     * index.html -- that is html_handling's job, not this setting's.
+     *
+     * There is no client-side router to protect, so nothing wants SPA
+     * behaviour: every deep path in this app is an asset or a mistake.
+     */
+    "not_found_handling": "none"
+  },
+  // Both were being enabled implicitly with a build warning. Stated
+  // outright so the deploy is deterministic rather than defaulted.
+  "workers_dev": true,
+  "preview_urls": true
+}
