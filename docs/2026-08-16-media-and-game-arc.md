@@ -64,10 +64,42 @@ scope; this is the number the "gotta pay the bills" framing needed to be
 real.
 
 **Housekeeping.** The Pages workflow was deploying from a stale side
-branch — the live site hadn't updated in over a week. Now watches `main`.
-The 17 camera clips were 15-20× over the project's own size target;
-re-encoded (80MB → ~2MB), originals archived. `npm run seed:check`
-referenced a script that didn't exist; it now does, and passes.
+branch — the live site hadn't updated in over a week. The 17 camera clips
+were 15-20× over the project's own size target; re-encoded (80MB → ~2MB),
+originals archived. `npm run seed:check` referenced a script that didn't
+exist; it now does, and passes.
+
+## Follow-ups from playing it
+
+Three things surfaced only once the thing was live and being played.
+
+**Hosting moved to a Cloudflare Worker** (`hax.jmashley1982.workers.dev`).
+The Pages workflow is retired to `archive/pages.yml.superseded` so one push
+no longer publishes to two hosts that drift apart. Two traps came with the
+move, both silent:
+
+- Wrangler's setup wizard guessed `not_found_handling:
+  "single-page-application"`, which answers every unmatched path with a 200
+  and the whole ~354kB `index.html`. Both media registries deliberately
+  probe for files that may be absent, so that was ~9MB of wasted download
+  per page load. Now `"none"`.
+- Worse, fixing that in `wrangler.jsonc` *did nothing* at first: wrangler
+  was not a dependency, so `npx wrangler deploy` re-ran its wizard and
+  generated a competing config that outranked the committed one, with no
+  error anywhere. `wrangler` is now a devDependency with a real `npm run
+  deploy`, which leaves the wizard nothing to do. Check config changes with
+  `npx wrangler dev` before pushing — the live site will not tell you.
+
+**A softlock at KERNEL.** Level 5 spends clear windows on SIGNAL LOCK, but
+the depth ladder unlocked `signalAlign` a layer later at PHYSICAL, and the
+director drew only from the current layer's pool — the level's required
+tools biased picks *within* that pool but were never added to it. The panel
+could never appear, and because a levelled run only ends when its objective
+is met, the run sat at 0/3 holds forever while the board kept playing.
+Fixed by unioning the level's required tools into the spawn pool, so "a
+level cannot require a tool it cannot spawn" holds by construction rather
+than being true of five specs by luck. `npm run level:check` proves it for
+all six layers and fails with exactly this error against the old pool.
 
 ## What's still open
 
