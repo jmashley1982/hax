@@ -23,10 +23,12 @@ npm run preview
 
 The build is a **single self-contained `index.html`** with all JS and CSS
 inlined. It works opened straight off disk (`file://`), off a USB stick, or
-behind any static host. It makes **zero external network requests** and has
-**zero runtime dependencies** — only `vite` and `typescript` at build time.
-That is deliberate: a prop has to still work in five years on a machine
-with no internet.
+behind any static host. It makes **zero external network requests** and
+ships **zero runtime dependencies** — everything in `devDependencies`
+(`vite`, `vite-plugin-singlefile`, `typescript`, `tsx`, `wrangler`,
+`@types/node`) is build- or deploy-time only and none of it reaches the
+browser. That is deliberate: a prop has to still work in five years on a
+machine with no internet.
 
 Media (`public/images/`, `public/video/`) is the one exception — it stays
 as loose files next to `index.html` rather than being inlined, so you can
@@ -34,8 +36,10 @@ add to it without rebuilding. Keep the folders next to the HTML.
 
 ```bash
 npm run typecheck      # both tsconfigs
-npm run content:audit  # samples 50k generated lines, reports the duplicate rate
+npm run content:audit  # 2,500 samples x 8 hot keys, reports the duplicate rate
 npm run seed:check     # runs the same seed twice and diffs the output
+npm run level:check    # proves every level's required tools can actually spawn
+npm run deploy         # build, then wrangler deploy (CI does this on push)
 ```
 
 ---
@@ -53,8 +57,9 @@ Click a window to aim at it deliberately.
 | **CASUAL HACK** | The game. Six depth layers, each with its own objective and its own required tool, plus blocking gates that stop the world until you deal with them. Scored, with an arcade high-score wall. |
 | **DEEP HACK** | No safety net. TRACE runs hot, standing still bleeds your own integrity, and the payout is doubled. |
 
-Failing a gate costs you — integrity, heat, and ground on the objective —
-but it never ends the run.
+Failing a gate costs you — integrity, heat, ground on the objective, and
+your combo — but no single failure ends the run outright. It does feed
+TRACE, though, and enough of them will.
 
 **TRACE** is the meter that does. Unlike heat (which decays every second)
 or integrity (which regenerates in clean play), TRACE only ever climbs —
@@ -103,7 +108,10 @@ glitches and scanlines run at full speed.
 | **F8** | Toggle autopilot |
 
 These are function keys specifically so they can never be confused with
-mashing, and they work even while a blocking gate is up.
+mashing. A gate swallows every other key, and F9/F8 still get through it —
+but **F10 deliberately does not**: forcing a breakthrough out from under a
+gate would leave a blocking overlay pointing at a level that no longer
+exists. Answer the gate, then cue the layer.
 
 ### Autopilot
 
@@ -225,12 +233,20 @@ with `npx wrangler dev`.
 One setting in there is load-bearing and easy to get wrong:
 `assets.not_found_handling` is `"none"`, **not** `"single-page-application"`.
 This app is one page with no client-side router, and both media registries
-probe for files that may legitimately be absent (`docs-NN.png` before
-`.jpg`; 20 declared camera slots against 17 present clips). SPA handling
-answers every one of those misses with a 200 and the whole ~354kB
-`index.html` — measured at ~9MB of wasted downloads per page load, more
-than the real media payload. `"none"` gives the probes the 404 they are
-written to expect.
+probe for files that may legitimately be absent — the video registry
+declares 20 camera slots against 17 present clips, and any image entry
+whose extension does not match what is on disk costs a miss before the
+fallback. SPA handling answers every one of those misses with a 200 and
+the whole ~354kB `index.html`; measured at ~9MB of wasted downloads per
+page load, more than the real media payload. `"none"` gives the probes the
+404 they are written to expect.
+
+Declaring the wrong extension is the other half of that bill, and it is
+paid on every host. The 24 `docs-NN` entries were declared `.png` while
+shipping as `.jpg`, so each one missed before the fallback found it — 24
+round-trips per load. They declare `.jpg` now. The `.png`/`.jpg` fallback
+in `candidates()` is a convenience for hand-dropped files, not a licence
+to guess.
 
 An earlier GitHub Pages workflow is kept at `archive/pages.yml.superseded`.
 It is out of `.github/workflows/` so it no longer runs — two hosts
