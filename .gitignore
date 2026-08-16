@@ -4,3 +4,6 @@ dist/
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+
+# Wrangler local state (miniflare cache from `wrangler dev`)
+.wrangler/

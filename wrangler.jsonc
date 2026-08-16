@@ -6,6 +6,11 @@
     "enabled": true
   },
   "assets": {
+    // Where `npm run build` puts the site. Required now that we deploy
+    // this config directly instead of letting wrangler's first-run wizard
+    // generate one and hand the directory over through a build-time
+    // redirect (see the deploy note in README.md).
+    "directory": "./dist",
     /*
      * NOT a single-page application, despite being one HTML file.
      *

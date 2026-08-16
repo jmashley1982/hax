@@ -11,13 +11,15 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "content:audit": "tsx scripts/contentAudit.ts",
     "seed:check": "tsx scripts/seedCheck.ts",
-    "level:check": "tsx scripts/levelCheck.ts"
+    "level:check": "tsx scripts/levelCheck.ts",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.9.0",
     "vite": "^6.0.0",
     "vite-plugin-singlefile": "^2.3.0",
-    "tsx": "^4.19.0"
+    "wrangler": "^4.123.0"
   }
 }

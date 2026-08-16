@@ -211,6 +211,17 @@ builds and deploys automatically; the config lives in `wrangler.jsonc`.
 `base` is relative, so the same `dist/` also works at a subpath, at a
 domain root, or from a folder on a stick.
 
+`wrangler` is a devDependency and `npm run deploy` is a real script for a
+reason. Without them, `npx wrangler deploy` fetched wrangler on the fly,
+found an unconfigured project, and ran its first-run setup wizard — which
+generated its *own* config into `dist/wrangler.json` plus a build-time
+redirect that silently outranked the `wrangler.jsonc` in this repo. The
+symptom was a committed setting that had no effect on the live site and no
+error anywhere to say so. Installed and scripted, the wizard has nothing
+left to do and this file is the only config in play. Check it with
+`npx wrangler deploy --dry-run`, or serve it exactly as Cloudflare will
+with `npx wrangler dev`.
+
 One setting in there is load-bearing and easy to get wrong:
 `assets.not_found_handling` is `"none"`, **not** `"single-page-application"`.
 This app is one page with no client-side router, and both media registries
