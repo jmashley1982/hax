@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "content:audit": "tsx scripts/contentAudit.ts",
-    "seed:check": "tsx scripts/seedCheck.ts"
+    "seed:check": "tsx scripts/seedCheck.ts",
+    "level:check": "tsx scripts/levelCheck.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

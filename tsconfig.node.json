@@ -2,7 +2,13 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "lib": ["ES2022"],
+    // DOM is here for TYPES ONLY, not because these scripts run in a
+    // browser. scripts/levelCheck.ts imports the real panel registry so it
+    // validates against the actual list of panel types rather than a
+    // hand-copied one that would drift -- and that module graph reaches
+    // browser code. The script stubs the few globals it needs at runtime;
+    // without DOM in `lib` those same files simply fail to typecheck.
+    "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "skipLibCheck": true,
 

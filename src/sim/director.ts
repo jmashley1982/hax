@@ -158,7 +158,25 @@ export class Director {
     const cap = this.getWindowBudget?.()
     if (cap !== undefined && this.panels.length >= cap) return null
 
-    const pool = unlockedPanelTypes(this.state.layer)
+    // The level's required tools are ALWAYS spawnable, even if the depth
+    // ladder has not unlocked them yet.
+    //
+    // Without this union a level can demand a tool the layer refuses to
+    // spawn, and because a levelled run only ends when its OBJECTIVE is
+    // met -- applyResidualProgress explicitly cannot win a level -- that
+    // is a permanent softlock, not a slow patch. It shipped exactly once:
+    // KERNEL's "hold the channel" spends clear windows on SIGNAL LOCK,
+    // which layers.ts unlocks a layer LATER at PHYSICAL, so the panel
+    // could never appear. Reported from a real run stuck at 0/3 holds
+    // with eight unspendable windows banked.
+    //
+    // Unioning here rather than editing that one unlock list is the point:
+    // it makes "a level cannot require a tool it cannot spawn" true by
+    // construction for every spec written from now on. The ladder still
+    // governs everything the level did not ask for, so a tool borrowed
+    // early is borrowed for the job, not handed over wholesale.
+    const unlocked = unlockedPanelTypes(this.state.layer)
+    const pool = [...new Set([...unlocked, ...this.preferred])]
     const activeTypes = this.panels.map((p) => p.id.split('-')[0] ?? '')
     // Guarantee the level's tools are available WITHOUT letting them take
     // the whole board. Measured before this cap: at PERIMETER, whose level

@@ -89,7 +89,8 @@ export interface LevelSpec {
  * Gate count and gate variety climb with depth, and every level past the
  * second introduces a gate kind the player has not seen.
  */
-const LEVEL_SPECS: Partial<Record<LayerId, LevelSpec>> = {
+/** Exported for scripts/levelCheck.ts, which proves every level can actually be finished. */
+export const LEVEL_SPECS: Partial<Record<LayerId, LevelSpec>> = {
   surface: {
     kind: 'map',
     tools: ['ports'],
